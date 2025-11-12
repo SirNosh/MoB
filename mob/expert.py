@@ -29,6 +29,7 @@ class MoBExpert:
         alpha: float = 0.5,
         beta: float = 0.5,
         lambda_ewc: float = 5000,
+        forgetting_cost_lr: float = 0.001,
         device: Optional[torch.device] = None
     ):
         """
@@ -46,6 +47,9 @@ class MoBExpert:
             Weight for forgetting cost in the bid calculation.
         lambda_ewc : float
             EWC regularization strength.
+        forgetting_cost_lr : float
+            Hypothetical learning rate for forgetting cost approximation.
+            Default: 0.001
         device : torch.device, optional
             Device to run computations on.
         """
@@ -63,6 +67,7 @@ class MoBExpert:
         self.forget_estimator = EWCForgettingEstimator(
             model,
             lambda_ewc=lambda_ewc,
+            forgetting_cost_lr=forgetting_cost_lr,
             device=self.device
         )
 

@@ -189,7 +189,7 @@ class ExpertPool:
         all_expert_logits = [[] for _ in range(self.num_experts)]
         all_labels = []
 
-        # Collect predictions from all experts
+        # Collect predictions from all experts (keep on device for efficiency)
         for x, y in dataloader:
             all_labels.append(y)
             for i, expert in enumerate(self.experts):
@@ -197,15 +197,18 @@ class ExpertPool:
                 x_device = x.to(self.device)
                 with torch.no_grad():
                     logits = expert.model(x_device)
-                    all_expert_logits[i].append(logits.cpu())
+                    # Keep logits on device during collection for efficiency
+                    all_expert_logits[i].append(logits)
 
-        # Concatenate all batches
+        # Concatenate all batches and move to CPU once (more efficient than per-batch)
         all_labels = torch.cat(all_labels)
 
-        # Calculate individual accuracies
+        # Calculate individual accuracies (concatenate on device, then move to CPU)
         for i in range(self.num_experts):
             if len(all_expert_logits[i]) > 0:
-                expert_preds = torch.cat([logits.argmax(dim=-1) for logits in all_expert_logits[i]])
+                # Concatenate on device first for efficiency
+                expert_logits_concat = torch.cat(all_expert_logits[i])
+                expert_preds = expert_logits_concat.argmax(dim=-1).cpu()
                 accuracy = (expert_preds == all_labels).float().mean().item()
                 results[f'expert_{i}_accuracy'] = accuracy
             else:
@@ -217,9 +220,10 @@ class ExpertPool:
             num_batches = len(all_expert_logits[0])
 
             for j in range(num_batches):
+                # Stack and average on device, move to CPU only for final prediction
                 batch_logits = torch.stack([all_expert_logits[i][j] for i in range(self.num_experts)])
                 avg_logits = batch_logits.mean(dim=0)
-                ensemble_preds.append(avg_logits.argmax(dim=-1))
+                ensemble_preds.append(avg_logits.argmax(dim=-1).cpu())
 
             ensemble_preds = torch.cat(ensemble_preds)
             ensemble_accuracy = (ensemble_preds == all_labels).float().mean().item()

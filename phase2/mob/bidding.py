@@ -80,6 +80,7 @@ class EWCForgettingEstimator:
         self,
         model: nn.Module,
         lambda_ewc: float = 5000,
+        forgetting_cost_lr: float = 0.001,
         device: Optional[torch.device] = None
     ):
         """
@@ -91,11 +92,16 @@ class EWCForgettingEstimator:
             The neural network model to protect from forgetting.
         lambda_ewc : float
             EWC regularization strength coefficient.
+        forgetting_cost_lr : float
+            Hypothetical learning rate for forgetting cost approximation.
+            Used to estimate parameter change magnitude when computing forgetting cost.
+            Default: 0.001
         device : torch.device, optional
             Device to run computations on. If None, uses CPU.
         """
         self.model = model
         self.lambda_ewc = lambda_ewc
+        self.forgetting_cost_lr = forgetting_cost_lr
         self.device = device if device is not None else torch.device('cpu')
         self.fisher = {}
         self.optimal_params = {}
@@ -211,11 +217,11 @@ class EWCForgettingEstimator:
         # Calculate the EWC cost: Σ F_i * (Δθ_i)^2
         # We approximate Δθ with the current gradient (scaled by a conceptual learning rate).
         cost = 0.0
-        lr = 0.001  # A hypothetical learning rate for the cost calculation
 
         for (n, p), grad in zip(self.model.named_parameters(), grads):
             if n in self.fisher and grad is not None:
-                cost += (self.fisher[n] * (lr * grad).pow(2)).sum().item()
+                # Use configurable forgetting_cost_lr for parameter change approximation
+                cost += (self.fisher[n] * (self.forgetting_cost_lr * grad).pow(2)).sum().item()
 
         return cost
 
