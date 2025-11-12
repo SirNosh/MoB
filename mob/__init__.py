@@ -12,6 +12,19 @@ from .expert import MoBExpert
 from .pool import ExpertPool
 from .models import SimpleCNN, LeNet5, MLP, create_model
 from .baselines import NaiveFineTuning, RandomAssignment, MonolithicEWC, GatedMoE
+from .bid_diagnostics import BidLogger
+from .utils import (
+    set_seed,
+    setup_logging,
+    count_parameters,
+    print_model_summary,
+    format_time,
+    get_device,
+    save_config,
+    load_config,
+    print_section_header,
+    print_metrics_table
+)
 
 __version__ = "0.1.0"
 __author__ = "MoB Development Team"
@@ -25,6 +38,7 @@ __all__ = [
     # Bidding components
     'ExecutionCostEstimator',
     'EWCForgettingEstimator',
+    'BidLogger',
 
     # Expert management
     'MoBExpert',
@@ -41,4 +55,16 @@ __all__ = [
     'RandomAssignment',
     'MonolithicEWC',
     'GatedMoE',
+
+    # Utilities
+    'set_seed',
+    'setup_logging',
+    'count_parameters',
+    'print_model_summary',
+    'format_time',
+    'get_device',
+    'save_config',
+    'load_config',
+    'print_section_header',
+    'print_metrics_table',
 ]

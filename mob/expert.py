@@ -154,6 +154,14 @@ class MoBExpert:
         # Total loss
         total_loss = task_loss + ewc_penalty
 
+        # [EWC VERIFICATION] Log first few batches to verify EWC is being applied
+        if self.batches_won <= 3:
+            print(f"[Expert {self.expert_id}] Batch {self.batches_won}: "
+                  f"task_loss={task_loss.item():.4f}, "
+                  f"ewc_penalty={ewc_penalty.item() if isinstance(ewc_penalty, torch.Tensor) else ewc_penalty:.4f}, "
+                  f"total_loss={total_loss.item():.4f}, "
+                  f"has_fisher={self.forget_estimator.has_fisher()}")
+
         # Backward pass
         total_loss.backward()
         optimizer.step()

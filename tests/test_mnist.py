@@ -29,11 +29,12 @@ from mob import (
 )
 
 
-def create_split_mnist(num_tasks: int = 5, train: bool = True):
+def create_split_mnist(num_tasks: int = 5, train: bool = True, batch_size: int = 32, replay_ratio: float = 0.2):
     """
-    Create Split-MNIST dataset.
+    Create Split-MNIST dataset with replay mechanism to prevent catastrophic forgetting.
 
     Splits MNIST into multiple tasks, each containing a subset of digits.
+    For tasks after the first, includes replay samples from previous tasks.
 
     Parameters:
     -----------
@@ -41,12 +42,25 @@ def create_split_mnist(num_tasks: int = 5, train: bool = True):
         Number of tasks to create (default: 5, each with 2 digits).
     train : bool
         Whether to use training or test set.
+    batch_size : int
+        Batch size for DataLoader (default: 32).
+    replay_ratio : float
+        Ratio of previous task samples to include in current task (default 0.2 = 20%).
 
     Returns:
     --------
     tasks : list of DataLoader
         List of DataLoaders, one per task.
+
+    Note:
+    -----
+    This implementation includes replay from previous tasks to ensure that:
+    1. All output neurons get trained throughout learning
+    2. Models don't catastrophically forget by overwriting output weights
+    3. Fair evaluation of continual learning performance
     """
+    import random
+
     # Download MNIST
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -69,15 +83,35 @@ def create_split_mnist(num_tasks: int = 5, train: bool = True):
         start_digit = task_id * digits_per_task
         end_digit = start_digit + digits_per_task
 
-        indices = [
+        # Get current task samples
+        current_indices = [
             i for i, (_, label) in enumerate(dataset)
             if start_digit <= label < end_digit
         ]
 
-        task_dataset = Subset(dataset, indices)
+        # For tasks after the first, add replay samples from previous tasks
+        if task_id > 0:
+            # Get samples from all previous classes
+            previous_indices = [
+                i for i, (_, label) in enumerate(dataset)
+                if label < start_digit
+            ]
+
+            # Randomly sample replay_ratio of current task size from previous tasks
+            random.shuffle(previous_indices)
+            replay_count = int(len(current_indices) * replay_ratio)
+            replay_indices = previous_indices[:replay_count]
+
+            # Combine current task samples with replay samples
+            task_indices = current_indices + replay_indices
+            random.shuffle(task_indices)  # Shuffle to mix current and replay samples
+        else:
+            task_indices = current_indices
+
+        task_dataset = Subset(dataset, task_indices)
         task_loader = DataLoader(
             task_dataset,
-            batch_size=32,
+            batch_size=batch_size,
             shuffle=True,
             num_workers=0
         )

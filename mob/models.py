@@ -29,7 +29,8 @@ class SimpleCNN(nn.Module):
         self,
         num_classes: int = 10,
         input_channels: int = 1,
-        dropout: float = 0.5
+        dropout: float = 0.5,
+        width_multiplier: int = 1
     ):
         """
         Initialize the Simple CNN.
@@ -42,18 +43,22 @@ class SimpleCNN(nn.Module):
             Number of input channels (1 for grayscale, 3 for RGB).
         dropout : float
             Dropout probability.
+        width_multiplier : int
+            Multiplier for channel width (default 1). Use 4 for fair comparison
+            when competing against 4-expert systems.
         """
         super(SimpleCNN, self).__init__()
 
-        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.width_multiplier = width_multiplier
+        self.conv1 = nn.Conv2d(input_channels, 32 * width_multiplier, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32 * width_multiplier, 64 * width_multiplier, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(2, 2)
         self.dropout1 = nn.Dropout2d(0.25)
 
         # Calculate the size after convolutions and pooling
         # For MNIST (28x28): after 2 pools -> 7x7
         # For CIFAR (32x32): after 2 pools -> 8x8
-        self.fc1_input_size = 64 * 7 * 7  # Will be dynamically computed
+        self.fc1_input_size = 64 * width_multiplier * 7 * 7  # Will be dynamically computed
 
         self.fc1 = None  # Will be initialized on first forward pass
         self.fc2 = None
@@ -64,15 +69,18 @@ class SimpleCNN(nn.Module):
     def _initialize_fc_layers(self, x_shape):
         """Dynamically initialize fully connected layers based on input size."""
         # Compute the flattened size after conv layers
+        device = next(self.conv1.parameters()).device
         with torch.no_grad():
-            x_dummy = torch.zeros(1, *x_shape[1:])
+            x_dummy = torch.zeros(1, *x_shape[1:], device=device)
             x_dummy = self.pool(F.relu(self.conv1(x_dummy)))
             x_dummy = self.pool(F.relu(self.conv2(x_dummy)))
             x_dummy = self.dropout1(x_dummy)
             flattened_size = x_dummy.view(1, -1).shape[1]
 
-        self.fc1 = nn.Linear(flattened_size, 128).to(next(self.conv1.parameters()).device)
-        self.fc2 = nn.Linear(128, self.num_classes).to(next(self.conv1.parameters()).device)
+        # Scale hidden layer size with width multiplier
+        hidden_size = 128 * self.width_multiplier
+        self.fc1 = nn.Linear(flattened_size, hidden_size).to(device)
+        self.fc2 = nn.Linear(hidden_size, self.num_classes).to(device)
         self._initialized = True
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -116,7 +124,7 @@ class LeNet5(nn.Module):
     Based on LeCun et al. (1998) "Gradient-based learning applied to document recognition"
     """
 
-    def __init__(self, num_classes: int = 10, input_channels: int = 1):
+    def __init__(self, num_classes: int = 10, input_channels: int = 1, width_multiplier: int = 1):
         """
         Initialize LeNet-5.
 
@@ -126,14 +134,18 @@ class LeNet5(nn.Module):
             Number of output classes.
         input_channels : int
             Number of input channels.
+        width_multiplier : int
+            Multiplier for channel width (default 1). Use 4 for fair comparison
+            when competing against 4-expert systems.
         """
         super(LeNet5, self).__init__()
 
-        self.conv1 = nn.Conv2d(input_channels, 6, kernel_size=5, padding=2)
-        self.conv2 = nn.Conv2d(6, 16, kernel_size=5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        self.width_multiplier = width_multiplier
+        self.conv1 = nn.Conv2d(input_channels, 6 * width_multiplier, kernel_size=5, padding=2)
+        self.conv2 = nn.Conv2d(6 * width_multiplier, 16 * width_multiplier, kernel_size=5)
+        self.fc1 = nn.Linear(16 * width_multiplier * 5 * 5, 120 * width_multiplier)
+        self.fc2 = nn.Linear(120 * width_multiplier, 84 * width_multiplier)
+        self.fc3 = nn.Linear(84 * width_multiplier, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -168,7 +180,8 @@ class MLP(nn.Module):
         input_size: int = 784,
         hidden_sizes: list = [256, 128],
         num_classes: int = 10,
-        dropout: float = 0.5
+        dropout: float = 0.5,
+        width_multiplier: int = 1
     ):
         """
         Initialize the MLP.
@@ -183,13 +196,20 @@ class MLP(nn.Module):
             Number of output classes.
         dropout : float
             Dropout probability.
+        width_multiplier : int
+            Multiplier for hidden layer width (default 1). Use 4 for fair comparison
+            when competing against 4-expert systems.
         """
         super(MLP, self).__init__()
 
+        self.width_multiplier = width_multiplier
         layers = []
         prev_size = input_size
 
-        for hidden_size in hidden_sizes:
+        # Scale all hidden sizes by width_multiplier
+        scaled_hidden_sizes = [h * width_multiplier for h in hidden_sizes]
+
+        for hidden_size in scaled_hidden_sizes:
             layers.append(nn.Linear(prev_size, hidden_size))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(dropout))
@@ -249,19 +269,22 @@ def create_model(
         return SimpleCNN(
             num_classes=num_classes,
             input_channels=input_channels,
-            dropout=kwargs.get('dropout', 0.5)
+            dropout=kwargs.get('dropout', 0.5),
+            width_multiplier=kwargs.get('width_multiplier', 1)
         )
     elif architecture == 'lenet5':
         return LeNet5(
             num_classes=num_classes,
-            input_channels=input_channels
+            input_channels=input_channels,
+            width_multiplier=kwargs.get('width_multiplier', 1)
         )
     elif architecture == 'mlp':
         return MLP(
             input_size=kwargs.get('input_size', 784),
             hidden_sizes=kwargs.get('hidden_sizes', [256, 128]),
             num_classes=num_classes,
-            dropout=kwargs.get('dropout', 0.5)
+            dropout=kwargs.get('dropout', 0.5),
+            width_multiplier=kwargs.get('width_multiplier', 1)
         )
     else:
         raise ValueError(f"Unknown architecture: {architecture}")

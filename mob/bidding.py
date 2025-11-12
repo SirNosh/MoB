@@ -155,6 +155,21 @@ class EWCForgettingEstimator:
         for n in self.fisher:
             self.fisher[n] /= samples_seen
 
+        # [EWC VERIFICATION] Log Fisher statistics to verify computation
+        fisher_stats = self.get_fisher_stats()
+        if fisher_stats:
+            mean_imp = fisher_stats['mean_importance']
+            max_imp = fisher_stats['max_importance']
+            print(f"[EWC] Fisher updated: mean={mean_imp:.6e}, max={max_imp:.6e}, "
+                  f"params={fisher_stats['total_params']}, samples={samples_seen}")
+
+            # Assertion to catch Fisher matrix being all zeros (bug indicator)
+            assert mean_imp > 0, (
+                "CRITICAL: Fisher matrix is all zeros! This indicates EWC is not working. "
+                "Possible causes: (1) gradients not computed, (2) samples_seen=0, "
+                "(3) model not properly initialized."
+            )
+
     def compute_forgetting_cost(self, x: torch.Tensor, y: torch.Tensor) -> float:
         """
         Estimates the forgetting cost that would be incurred by training on batch (x, y).
@@ -204,7 +219,7 @@ class EWCForgettingEstimator:
 
         return cost
 
-    def penalty(self) -> torch.Tensor:
+    def penalty(self, verbose: bool = False) -> torch.Tensor:
         """
         Computes the EWC regularization term to be added to the main loss during training.
 
@@ -212,6 +227,11 @@ class EWCForgettingEstimator:
 
         This penalty term is added to the task loss to prevent the model from
         deviating too much from parameters that were important for previous tasks.
+
+        Parameters:
+        -----------
+        verbose : bool
+            If True, print penalty value for debugging (default: False).
 
         Returns:
         --------
@@ -228,7 +248,13 @@ class EWCForgettingEstimator:
                 param_diff_sq = (p - self.optimal_params[n].to(self.device)).pow(2)
                 penalty += (self.fisher[n] * param_diff_sq).sum()
 
-        return (self.lambda_ewc / 2) * penalty
+        final_penalty = (self.lambda_ewc / 2) * penalty
+
+        # [EWC VERIFICATION] Log penalty if requested
+        if verbose:
+            print(f"[EWC] Penalty computed: {final_penalty.item():.4e} (λ={self.lambda_ewc})")
+
+        return final_penalty
 
     def has_fisher(self) -> bool:
         """
