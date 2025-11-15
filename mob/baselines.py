@@ -15,9 +15,10 @@ import numpy as np
 import random
 from typing import Dict, List, Optional, Tuple
 from torch.utils.data import DataLoader
-
+from tqdm import tqdm
 from .models import create_model
 from .expert import MoBExpert
+from .bidding import EWCForgettingEstimator
 
 
 class NaiveFineTuning:
@@ -171,12 +172,14 @@ class RandomAssignment:
                 input_channels=expert_config.get('input_channels', 1),
                 dropout=expert_config.get('dropout', 0.5)
             )
+            # [FIX 1 of 2] Pass the new 'forgetting_cost_scale' parameter here.
             expert = MoBExpert(
                 expert_id=i,
                 model=model,
                 alpha=expert_config.get('alpha', 0.5),
                 beta=expert_config.get('beta', 0.5),
                 lambda_ewc=expert_config.get('lambda_ewc', 5000),
+                forgetting_cost_scale=expert_config.get('forgetting_cost_scale', 1.0),
                 device=self.device
             )
             self.experts.append(expert)
@@ -264,84 +267,63 @@ class RandomAssignment:
 
 class MonolithicEWC:
     """
-    Baseline 3: Monolithic EWC
+    Baseline 3: Monolithic EWC (Corrected Implementation)
 
-    A single CNN trained with EWC regularization. This is a strong standard
-    continual learning baseline that isolates the architectural benefit of
-    multi-expert systems.
-
-    Expected: Strong performance, but MoB should beat it via specialization.
+    A single CNN trained with a correctly implemented EWC regularization.
+    This version does not reuse MoBExpert to avoid state management bugs.
     """
-
     def __init__(
         self,
         model: nn.Module,
         lambda_ewc: float = 5000,
+        forgetting_cost_scale: float = 1.0, # Included for API consistency, not used in training
         device: Optional[torch.device] = None
     ):
-        """
-        Initialize monolithic EWC baseline.
-
-        Parameters:
-        -----------
-        model : nn.Module
-            The neural network model.
-        lambda_ewc : float
-            EWC regularization strength.
-        device : torch.device, optional
-            Device to run on.
-        """
+        self.model = model
         self.device = device if device is not None else torch.device('cpu')
-
-        # Create a single expert with EWC
-        self.expert = MoBExpert(
-            expert_id=0,
-            model=model,
-            alpha=1.0,  # Only execution cost matters for single model
-            beta=0.0,
+        self.model.to(self.device)
+        
+        # Use the EWC engine directly, not via MoBExpert
+        self.ewc_estimator = EWCForgettingEstimator(
+            self.model,
             lambda_ewc=lambda_ewc,
+            forgetting_cost_scale=forgetting_cost_scale,
             device=self.device
         )
 
-    def train_on_task(
-        self,
-        dataloader: DataLoader,
-        optimizer: torch.optim.Optimizer
-    ) -> Dict:
-        """
-        Train on a task with EWC regularization.
-
-        Parameters:
-        -----------
-        dataloader : DataLoader
-            Training data.
-        optimizer : torch.optim.Optimizer
-            Optimizer for training.
-
-        Returns:
-        --------
-        metrics : dict
-            Training metrics.
-        """
-        total_loss = 0.0
-        num_batches = 0
-
-        for x, y in dataloader:
-            metrics = self.expert.train_on_batch(x, y, optimizer)
-            total_loss += metrics['total_loss']
-            num_batches += 1
-
-        avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
-
-        return {'avg_loss': avg_loss, 'num_batches': num_batches}
+    def train_on_task(self, dataloader: DataLoader, optimizer: torch.optim.Optimizer):
+        self.model.train()
+        for i, (x, y) in enumerate(tqdm(dataloader, desc="Training Monolithic EWC", leave=False)):
+            x, y = x.to(self.device), y.to(self.device)
+            optimizer.zero_grad()
+            logits = self.model(x)
+            task_loss = F.cross_entropy(logits, y)
+            ewc_penalty = self.ewc_estimator.penalty()
+            total_loss = task_loss + ewc_penalty
+            total_loss.backward()
+            optimizer.step()
+            
+            if i < 3:
+                 print(f"[Monolithic EWC] Batch {i+1}: "
+                       f"task_loss={task_loss.item():.4f}, "
+                       f"ewc_penalty={ewc_penalty.item():.4f}, "
+                       f"total_loss={total_loss.item():.4f}, "
+                       f"has_fisher={self.ewc_estimator.has_fisher()}")
 
     def update_after_task(self, dataloader: DataLoader, num_samples: int = 200):
-        """Update EWC Fisher matrix after task completion."""
-        self.expert.update_after_task(dataloader, num_samples=num_samples)
+        self.ewc_estimator.update_fisher(dataloader, num_samples)
 
     def evaluate(self, dataloader: DataLoader) -> Dict:
-        """Evaluate the model on a dataset."""
-        return self.expert.evaluate(dataloader)
+        self.model.eval()
+        correct, total = 0, 0
+        with torch.no_grad():
+            for x, y in dataloader:
+                x, y = x.to(self.device), y.to(self.device)
+                logits = self.model(x)
+                preds = logits.argmax(dim=-1)
+                correct += (preds == y).sum().item()
+                total += len(y)
+        return {'accuracy': correct / total if total > 0 else 0.0}
 
 
 class GatedMoE:
@@ -384,7 +366,7 @@ class GatedMoE:
                 input_channels=expert_config.get('input_channels', 1),
                 dropout=expert_config.get('dropout', 0.5)
             ).to(self.device)
-            for _ in range(num_experts)
+            for _ in range(self.num_experts)
         ])
 
         # Create the centralized gater network

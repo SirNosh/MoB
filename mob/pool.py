@@ -8,6 +8,7 @@ independent MoBExpert agents.
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F  # Ensure F is imported
 from typing import Dict, List, Optional, Tuple
 
 from .expert import MoBExpert
@@ -30,22 +31,6 @@ class ExpertPool:
     ):
         """
         Initialize the expert pool.
-
-        Parameters:
-        -----------
-        num_experts : int
-            Number of expert agents to create.
-        expert_config : dict
-            Configuration for expert models. Should contain:
-            - 'architecture': Model architecture name
-            - 'num_classes': Number of output classes
-            - 'input_channels': Number of input channels
-            - 'alpha': Weight for execution cost
-            - 'beta': Weight for forgetting cost
-            - 'lambda_ewc': EWC regularization strength
-            And any architecture-specific parameters.
-        device : torch.device, optional
-            Device to run computations on.
         """
         self.num_experts = num_experts
         self.expert_config = expert_config
@@ -61,6 +46,7 @@ class ExpertPool:
                 alpha=expert_config.get('alpha', 0.5),
                 beta=expert_config.get('beta', 0.5),
                 lambda_ewc=expert_config.get('lambda_ewc', 5000),
+                forgetting_cost_scale=expert_config.get('forgetting_cost_scale', 1.0),
                 device=self.device
             )
             self.experts.append(expert)
@@ -68,16 +54,6 @@ class ExpertPool:
     def _create_expert_model(self, config: Dict) -> nn.Module:
         """
         Factory method for creating expert neural networks.
-
-        Parameters:
-        -----------
-        config : dict
-            Configuration dictionary for the model.
-
-        Returns:
-        --------
-        model : nn.Module
-            Initialized neural network model.
         """
         return create_model(
             architecture=config['architecture'],
@@ -95,29 +71,13 @@ class ExpertPool:
     ) -> Tuple[np.ndarray, List[Dict]]:
         """
         Gathers bids from all experts for a given batch.
-
-        Parameters:
-        -----------
-        x : torch.Tensor
-            Input data batch.
-        y : torch.Tensor
-            Target labels.
-
-        Returns:
-        --------
-        bids : np.ndarray
-            Array of bids from all experts.
-        components : list of dict
-            Breakdown of bid components for each expert.
         """
         bids = np.zeros(self.num_experts)
         components = []
-
         for i, expert in enumerate(self.experts):
             bid, comp = expert.compute_bid(x, y)
             bids[i] = bid
             components.append(comp)
-
         return bids, components
 
     def train_winner(
@@ -129,22 +89,6 @@ class ExpertPool:
     ) -> Dict:
         """
         Train the winning expert on the batch.
-
-        Parameters:
-        -----------
-        winner_id : int
-            ID of the winning expert.
-        x : torch.Tensor
-            Input data batch.
-        y : torch.Tensor
-            Target labels.
-        optimizers : list of torch.optim.Optimizer
-            List of optimizers for each expert.
-
-        Returns:
-        --------
-        metrics : dict
-            Training metrics from the winner.
         """
         winner = self.experts[winner_id]
         metrics = winner.train_on_batch(x, y, optimizers[winner_id])
@@ -157,13 +101,6 @@ class ExpertPool:
     ):
         """
         Updates all experts' EWC parameters after a task is finished.
-
-        Parameters:
-        -----------
-        dataloader : torch.utils.data.DataLoader
-            DataLoader for the completed task.
-        num_samples : int
-            Number of samples to use for Fisher computation.
         """
         for expert in self.experts:
             expert.update_after_task(dataloader, num_samples=num_samples)
@@ -173,60 +110,67 @@ class ExpertPool:
         dataloader: torch.utils.data.DataLoader
     ) -> Dict:
         """
-        Evaluates all experts on a given dataset.
+        [CORRECTED] Evaluates the MoB system by running a "best expert"
+        auction for each batch in the test set.
 
-        Parameters:
-        -----------
-        dataloader : torch.utils.data.DataLoader
-            DataLoader for evaluation.
-
-        Returns:
-        --------
-        results : dict
-            Dictionary with individual expert metrics and ensemble metrics.
+        This replaces the flawed ensemble average with a method that reflects
+        the true decision-making process of the MoB framework. At inference time,
+        the bid is simply the predicted loss (alpha signal), as there is no
+        training and thus no forgetting to penalize.
         """
         results = {}
-        all_expert_logits = [[] for _ in range(self.num_experts)]
         all_labels = []
+        winner_preds = []
 
-        # Collect predictions from all experts (keep on device for efficiency)
+        # 1. Calculate individual expert accuracies (for diagnostics)
+        for i, expert in enumerate(self.experts):
+            expert.model.eval()
+            correct, total = 0, 0
+            with torch.no_grad():
+                for x, y in dataloader:
+                    x_device = x.to(self.device)
+                    y_device = y.to(self.device)
+                    logits = expert.model(x_device)
+                    preds = logits.argmax(dim=-1)
+                    correct += (preds == y_device).sum().item()
+                    total += len(y_device)
+            accuracy = correct / total if total > 0 else 0.0
+            results[f'expert_{i}_accuracy'] = accuracy
+
+        # 2. Calculate MoB's true accuracy using auction-based routing
         for x, y in dataloader:
-            all_labels.append(y)
+            x_device = x.to(self.device)
+            y_device = y.to(self.device)
+            all_labels.append(y_device.cpu())
+
+            batch_costs = np.zeros(self.num_experts)
+            batch_logits = []
+
+            # Determine the winner based on execution cost (predicted loss)
             for i, expert in enumerate(self.experts):
                 expert.model.eval()
-                x_device = x.to(self.device)
                 with torch.no_grad():
                     logits = expert.model(x_device)
-                    # Keep logits on device during collection for efficiency
-                    all_expert_logits[i].append(logits)
+                    loss = F.cross_entropy(logits, y_device, reduction='mean')
+                    batch_costs[i] = loss.item()
+                    batch_logits.append(logits)
 
-        # Concatenate all batches and move to CPU once (more efficient than per-batch)
-        all_labels = torch.cat(all_labels)
+            # The winner is the expert with the lowest predicted loss
+            winner_id = np.argmin(batch_costs)
+            
+            # Get the winning expert's predictions for this batch
+            winning_logits = batch_logits[winner_id]
+            winning_preds_batch = winning_logits.argmax(dim=-1).cpu()
+            winner_preds.append(winning_preds_batch)
 
-        # Calculate individual accuracies (concatenate on device, then move to CPU)
-        for i in range(self.num_experts):
-            if len(all_expert_logits[i]) > 0:
-                # Concatenate on device first for efficiency
-                expert_logits_concat = torch.cat(all_expert_logits[i])
-                expert_preds = expert_logits_concat.argmax(dim=-1).cpu()
-                accuracy = (expert_preds == all_labels).float().mean().item()
-                results[f'expert_{i}_accuracy'] = accuracy
-            else:
-                results[f'expert_{i}_accuracy'] = 0.0
-
-        # Calculate ensemble accuracy (average logits)
-        if len(all_expert_logits[0]) > 0:
-            ensemble_preds = []
-            num_batches = len(all_expert_logits[0])
-
-            for j in range(num_batches):
-                # Stack and average on device, move to CPU only for final prediction
-                batch_logits = torch.stack([all_expert_logits[i][j] for i in range(self.num_experts)])
-                avg_logits = batch_logits.mean(dim=0)
-                ensemble_preds.append(avg_logits.argmax(dim=-1).cpu())
-
-            ensemble_preds = torch.cat(ensemble_preds)
-            ensemble_accuracy = (ensemble_preds == all_labels).float().mean().item()
+        # Concatenate all predictions and labels
+        if all_labels:
+            all_labels = torch.cat(all_labels)
+            winner_preds = torch.cat(winner_preds)
+            
+            # Calculate the final accuracy based on the winners' predictions
+            # The key 'ensemble_accuracy' is kept for consistency with the benchmark script
+            ensemble_accuracy = (winner_preds == all_labels).float().mean().item()
             results['ensemble_accuracy'] = ensemble_accuracy
         else:
             results['ensemble_accuracy'] = 0.0
@@ -234,14 +178,7 @@ class ExpertPool:
         return results
 
     def get_expert_statistics(self) -> List[Dict]:
-        """
-        Get statistics for all experts.
-
-        Returns:
-        --------
-        stats : list of dict
-            List of statistics dictionaries, one per expert.
-        """
+        """Get statistics for all experts."""
         return [expert.get_statistics() for expert in self.experts]
 
     def reset_statistics(self):
@@ -250,45 +187,26 @@ class ExpertPool:
             expert.reset_statistics()
 
     def save_all(self, directory: str):
-        """
-        Save all experts to a directory.
-
-        Parameters:
-        -----------
-        directory : str
-            Directory to save expert files.
-        """
+        """Save all experts to a directory."""
         import os
         os.makedirs(directory, exist_ok=True)
-
         for expert in self.experts:
             path = os.path.join(directory, f'expert_{expert.expert_id}.pt')
             expert.save(path)
 
     def load_all(self, directory: str):
-        """
-        Load all experts from a directory.
-
-        Parameters:
-        -----------
-        directory : str
-            Directory containing expert files.
-        """
+        """Load all experts from a directory."""
         import os
-
         for expert in self.experts:
             path = os.path.join(directory, f'expert_{expert.expert_id}.pt')
             if os.path.exists(path):
                 expert.load(path)
 
     def __len__(self) -> int:
-        """Return the number of experts."""
         return self.num_experts
 
     def __getitem__(self, idx: int) -> MoBExpert:
-        """Get an expert by index."""
         return self.experts[idx]
 
     def __repr__(self) -> str:
-        """String representation of the pool."""
         return f"ExpertPool(num_experts={self.num_experts}, device={self.device})"

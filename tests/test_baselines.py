@@ -44,7 +44,7 @@ from mob.baselines import (
 )
 
 
-def create_split_mnist(num_tasks: int = 5, train: bool = True, batch_size: int = 32, replay_ratio: float = 0.2):
+def create_split_mnist(num_tasks: int = 5, train: bool = True, batch_size: int = 32, replay_ratio: float = 0.0):
     """
     Create Split-MNIST dataset with replay mechanism to prevent catastrophic forgetting.
 
@@ -144,6 +144,7 @@ def run_mob_experiment(train_tasks, test_tasks, config):
         'alpha': config['alpha'],
         'beta': config['beta'],
         'lambda_ewc': config['lambda_ewc'],
+        'forgetting_cost_scale': config['forgetting_cost_scale'],
         'dropout': 0.5
     }
 
@@ -170,7 +171,8 @@ def run_mob_experiment(train_tasks, test_tasks, config):
     epochs_per_task = config.get('epochs_per_task', 1)
     for task_id, task_loader in enumerate(train_tasks):
         print(f"\n[Task {task_id + 1}/{len(train_tasks)}] Training for {epochs_per_task} epoch(s)...")
-
+        
+        winners_this_task = set()
         for epoch in range(epochs_per_task):
             for x, y in tqdm(task_loader, desc=f"Task {task_id + 1} Epoch {epoch + 1}/{epochs_per_task}", leave=False):
                 # Collect bids with components
@@ -178,6 +180,8 @@ def run_mob_experiment(train_tasks, test_tasks, config):
 
                 # Run auction
                 winner_id, payment, _ = auction.run_auction(bids)
+                
+                winners_this_task.add(winner_id)
 
                 # Log bids for diagnostics
                 bid_logger.log_batch(
@@ -194,7 +198,9 @@ def run_mob_experiment(train_tasks, test_tasks, config):
                 global_batch_idx += 1
 
         # Update EWC
-        pool.update_after_task(task_loader, num_samples=200)
+        print(f"\nUpdating Fisher matrices for task specialists: {sorted(list(winners_this_task))}")
+        for expert_id in winners_this_task:
+            pool.experts[expert_id].update_after_task(task_loader, num_samples=200)
 
         # Evaluate on current task
         results = pool.evaluate_all(test_tasks[task_id])
@@ -297,6 +303,7 @@ def run_random_baseline(train_tasks, test_tasks, config):
         'alpha': config['alpha'],
         'beta': config['beta'],
         'lambda_ewc': config['lambda_ewc'],
+        'forgetting_cost_scale': config.get('forgetting_cost_scale', 1.0),
         'dropout': 0.5
     }
 
@@ -357,7 +364,7 @@ def run_monolithic_ewc_baseline(train_tasks, test_tasks, config):
     # Use width_multiplier=2 to approximately match 4-expert systems' total parameter count
     # (width_multiplier scales both conv and fc layers, so grows faster than linear)
     model = create_model('simple_cnn', num_classes=10, input_channels=1, width_multiplier=2)
-    baseline = MonolithicEWC(model, lambda_ewc=config['lambda_ewc'], device=device)
+    baseline = MonolithicEWC(model, lambda_ewc=config['lambda_ewc'],forgetting_cost_scale=config['forgetting_cost_scale'],device=device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
 
     task_accuracies = []
@@ -573,9 +580,10 @@ def main(seed=None):
         'beta': 0.5,
         'lambda_ewc': 5000,
         'learning_rate': 0.001,
+        'forgetting_cost_scale': 1e-05,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu',
         'batch_size': 32,
-        'epochs_per_task': 1  # Number of epochs to train on each task
+        'epochs_per_task': 4  # Number of epochs to train on each task
     }
 
     print(f"\nConfiguration:")
