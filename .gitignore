@@ -1,0 +1,21 @@
+# --- User Specified Exclusions ---
+*.out
+*.err
+*.slurm
+
+# --- Python & Environment ---
+# It looks like 'mob_env' is your virtual environment
+mob_env/
+__pycache__/
+*.py[cod]
+
+# --- Generated Data & Results ---
+# Exclude folders that contain heavy data or run outputs
+results/
+logs/
+data/
+
+# --- Specific Generated Artifacts ---
+# These look like outputs from your analysis scripts
+mob_bid_diagnostics.json
+mob_bid_components.png
