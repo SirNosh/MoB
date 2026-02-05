@@ -1,0 +1,6 @@
+.vscode/
+.claude/
+results/
+*.png
+*.json
+__pycache__/
