@@ -9,6 +9,7 @@ Key design decisions (industry-standard MoE):
 2. Gater learns routing through gradients from task loss (no separate gater loss)
 3. Each expert has EWC regularization (same as MoB)
 4. Optional load balancing loss
+5. Total params ~1.9M (vs MoB ~1.7M) due to Gater overhead
 
 Usage:
     python tests/run_gated_moe_ewc.py                     # Default config
@@ -453,7 +454,8 @@ def run_experiment(train_tasks, test_tasks, config):
         'architecture': 'simple_cnn',
         'num_classes': 10,
         'input_channels': 1,
-        'dropout': 0.5
+        'dropout': 0.5,
+        'width_multiplier': 1  # Standard experts (matches MoB)
     }
     
     # Create model
@@ -465,6 +467,13 @@ def run_experiment(train_tasks, test_tasks, config):
         gater_hidden_size=config.get('gater_hidden_size', 256),
         device=device
     )
+    
+    # [FIX] Force lazy initialization of ALL experts
+    print("  Initializing lazy layers for all experts...")
+    dummy_input = torch.randn(1, 1, 28, 28).to(device)
+    for expert in model.expert_models:
+        expert.to(device)
+        expert(dummy_input)
     
     # Print parameter counts for comparison with MoB
     param_counts = model.count_parameters()

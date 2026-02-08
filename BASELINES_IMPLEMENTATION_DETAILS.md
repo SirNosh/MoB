@@ -10,6 +10,8 @@ This document describes the baseline implementations used to evaluate MoB (Mixtu
 |----------|------|---------------------|-----------------|--------------|---------------------|
 | **Gated MoE + EWC** | `run_gated_moe_ewc.py` | ✓ | ✗ (gater routes) | ✓ | Moderate (gater forgets) |
 | **Monolithic EWC** | `run_monolithic_ewc.py` | ✓ | N/A (single model) | ✓ | Moderate (capacity limit) |
+| **A-GEM** | `run_agem_baseline.py` | ✓ | N/A (single model) | ✓ | Low (gradient projection) |
+| **Experience Replay** | `run_er_baseline.py` | ✓ | N/A (single model) | ✓ | Low (replay buffer) |
 | **Progressive NN** | `run_pnn_baseline.py` | ✓ | ✓ (task oracle!) | ✗ (grows) | ~Zero (by construction) |
 | **Task-Aware MoB** | `run_mob_only.py` | ✓ | ✗ (auction routes) | ✓ | Low (stateless routing) |
 | **Continual MoB** | `run_continual_mob.py` | ✗ (task-free) | ✗ (auction routes) | ✓ | Low (shift detection) |
@@ -33,11 +35,11 @@ python tests/run_gated_moe_ewc.py --seed 42 --lambda_ewc 50.0 --learning_rate 0.
 ### 2. Monolithic EWC (Fair Param Count)
 
 ```bash
-python tests/run_monolithic_ewc.py --seed 42 --width_multiplier 4 --lambda_ewc 10.0 --learning_rate 0.001 --epochs 4 --save_results
+python tests/run_monolithic_ewc.py --seed 42 --width_multiplier 2 --lambda_ewc 10.0 --learning_rate 0.001 --epochs 4 --save_results
 ```
 
 **Key settings:**
-- `width_multiplier=4`: Makes CNN 4× wider to match MoB's 4-expert parameter count
+- `width_multiplier=2`: Makes CNN 2× wider (~1.7M params, matching MoB's 4-expert parameter count)
 - `lambda_ewc=10.0`: Standard EWC strength (tune if needed)
 
 ---
@@ -102,13 +104,19 @@ Run all baselines sequentially:
 python tests/run_gated_moe_ewc.py --seed 42 --lambda_ewc 50.0 --save_results
 
 # Monolithic EWC
-python tests/run_monolithic_ewc.py --seed 42 --width_multiplier 4 --lambda_ewc 10.0 --save_results
+python tests/run_monolithic_ewc.py --seed 42 --width_multiplier 2 --lambda_ewc 10.0 --save_results
 
 # PNN (Capped)
 python tests/run_pnn_baseline.py --seed 42 --max_columns 4 --save_results
 
 # PNN (Unlimited)
 python tests/run_pnn_baseline.py --seed 42 --max_columns -1 --save_results
+
+# A-GEM
+python tests/run_agem_baseline.py --seed 42 --width_multiplier 2 --epochs 4 --save_results
+
+# Experience Replay
+python tests/run_er_baseline.py --seed 42 --memory_size 256 --replay_batch_size 32 --save_results
 
 # Task-Aware MoB
 python tests/run_mob_only.py --seed 42 --lambda_ewc 10.0
@@ -277,31 +285,31 @@ The key question: **Is the multi-expert architecture actually beneficial, or wou
 
 ## Architecture
 
-### Wide SimpleCNN (width_multiplier=4)
+### Wide SimpleCNN (width_multiplier=2)
 
 ```
 Input (1×28×28)
     ↓
-Conv2d(1→128, 3×3) + ReLU + MaxPool(2×2)     # 4× wider: 32×4=128
+Conv2d(1→64, 3×3) + ReLU + MaxPool(2×2)      # 2× wider: 32×2=64
     ↓
-Conv2d(128→256, 3×3) + ReLU + MaxPool(2×2)   # 4× wider: 64×4=256
+Conv2d(64→128, 3×3) + ReLU + MaxPool(2×2)    # 2× wider: 64×2=128
     ↓
 Dropout2d(0.25)
     ↓
-Flatten (256×7×7 = 12,544)
+Flatten (128×7×7 = 6,272)
     ↓
-Linear(12544→512) + ReLU + Dropout(0.5)       # 4× wider: 128×4=512
+Linear(6272→256) + ReLU + Dropout(0.5)       # 2× wider: 128×2=256
     ↓
-Linear(512→10)
+Linear(256→10)
 ```
 
-**Total Parameters:** ~6,425,354 (approximately 4× SimpleCNN)
+**Total Parameters:** ~1,682,954 (Matches MoB's ~1,686,568)
 
 ## Configuration
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `width_multiplier` | 4 | CNN width multiplier (matches 4 experts) |
+| `width_multiplier` | 2 | CNN width multiplier (matches MoB ~1.7M params) |
 | `lambda_ewc` | 10.0 | EWC regularization strength |
 | `learning_rate` | 0.001 | Adam optimizer LR |
 | `epochs` | 4 | Epochs per task |
@@ -362,7 +370,178 @@ No routing needed - just forward through the single model.
 
 ---
 
-# 3. Progressive Neural Networks (`run_pnn_baseline.py`)
+# 3. Experience Replay (ER) (`run_er_baseline.py`)
+
+## Purpose
+
+Tests a simple yet highly effective approach to continual learning. Experience Replay maintains a fixed-size buffer of past samples and jointly trains on current and replay data.
+
+Paper: Rolnick et al. (2019) "Experience Replay for Continual Learning" (NeurIPS)
+
+## Architecture
+
+### Wide SimpleCNN (width_multiplier=2)
+
+Same architecture as A-GEM and Monolithic EWC to match MoB's ~1.7M parameters:
+
+```
+Input (1×28×28)
+    ↓
+Conv2d(1→64, 3×3) + ReLU + MaxPool(2×2)      # 2× wider
+    ↓
+Conv2d(64→128, 3×3) + ReLU + MaxPool(2×2)    # 2× wider
+    ↓
+Flatten (128×7×7 = 6272)
+    ↓
+Linear(6272→256) + ReLU + Dropout(0.5)       # 2× wider
+    ↓
+Linear(256→10)
+```
+
+**Total Parameters:** ~1,682,954 (Matches MoB's ~1,686,568)
+
+## Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `width_multiplier` | 2 | Matches MoB parameter count |
+| `memory_size` | 256 | Total replay buffer size (samples) |
+| `replay_batch_size` | 32 | Samples replayed per training batch |
+| `replay_weight` | 1.0 | Weight for replay loss (1.0 = equal to current) |
+| `learning_rate` | 0.001 | Adam LR |
+| `epochs` | 4 | Epochs per task |
+
+## Training Pipeline
+
+### Reservoir Sampling
+
+The replay buffer uses Vitter's reservoir sampling (1985) to maintain a uniformly random sample of all experiences:
+
+```python
+def add_samples(self, x, y):
+    for i in range(batch_size):
+        self.seen_samples += 1
+
+        if len(self.data) < self.memory_size:
+            # Buffer not full, just add
+            self.data.append((x[i], y[i]))
+        else:
+            # Reservoir sampling: replace with probability memory_size / seen_samples
+            j = random.randint(0, self.seen_samples - 1)
+            if j < self.memory_size:
+                self.data[j] = (x[i], y[i])
+```
+
+### Training with Replay
+
+```python
+def train_on_batch(self, x, y, optimizer):
+    # 1. Compute loss on current batch
+    logits = model(x)
+    current_loss = cross_entropy(logits, y)
+
+    # 2. Compute loss on replay batch (if buffer not empty)
+    replay_loss = 0.0
+    if len(buffer) > 0:
+        x_replay, y_replay = buffer.sample_batch(replay_batch_size)
+        logits_replay = model(x_replay)
+        replay_loss = cross_entropy(logits_replay, y_replay)
+
+    # 3. Total loss = current + weighted replay
+    total_loss = current_loss + replay_weight * replay_loss
+
+    # 4. Backward and update
+    total_loss.backward()
+    optimizer.step()
+
+    # 5. Add current batch to buffer (reservoir sampling)
+    buffer.add_samples(x, y)
+```
+
+## Run Command
+
+```bash
+python tests/run_er_baseline.py --seed 42 --memory_size 256 --replay_batch_size 32 --save_results
+```
+
+## Expected Behavior
+
+- **Simple but Effective:** Often competitive with more complex methods
+- **Memory Efficient:** Fixed buffer size regardless of task count
+- **Class Balance:** Reservoir sampling maintains approximate class balance
+- **No Fisher/EWC:** No computation of importance weights
+
+## Comparison with Other Methods
+
+| Aspect | ER | A-GEM | EWC |
+|--------|---|-------|-----|
+| **Memory** | Raw samples | Raw samples | Fisher matrices |
+| **Gradient Modification** | No | Yes (projection) | Yes (penalty) |
+| **Compute per Batch** | Low | Medium | Low |
+| **Implementation** | Simple | Medium | Medium |
+
+---
+
+# 4. A-GEM (Averaged Gradient Episodic Memory)
+
+## Purpose
+
+Tests a **gradient projection** approach to continual learning. A-GEM prevents forgetting by projecting gradients so they don't increase loss on samples stored in an episodic memory.
+
+Paper: Chaudhry et al. (2019) "Efficient Lifelong Learning with A-GEM"
+
+## Architecture
+
+### Wide SimpleCNN (width_multiplier=2)
+
+To match MoB's 4-expert parameter count, we use a single SimpleCNN with **double** the width (width=2).
+**Note:** `width=2` results in ~4× the parameters of `width=1` (because params scale quadratically with width in FC layers), which matches 4 experts.
+
+```
+Input (1×28×28)
+    ↓
+Conv2d(1→64, 3×3) + ReLU + MaxPool(2×2)      # 2× wider
+    ↓
+Conv2d(64→128, 3×3) + ReLU + MaxPool(2×2)    # 2× wider
+    ↓
+Flatten (128×7×7 = 6272)
+    ↓
+Linear(6272→256) + ReLU + Dropout(0.5)       # 2× wider
+    ↓
+Linear(256→10)
+```
+
+**Total Parameters:** ~1,682,954 (Matches MoB's ~1,686,568)
+
+## Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `width_multiplier` | 2 | Matches MoB parameter count |
+| `memory_size` | 256 | Total episodic memory size (samples) |
+| `memory_batch_size` | 32 | Samples used for reference gradient |
+| `learning_rate` | 0.001 | Adam LR |
+| `epochs` | 4 | Epochs per task |
+
+## Training Pipeline
+
+1. **Episodic Memory:** Stores samples from past tasks using reservoir sampling.
+2. **Gradient Projection:**
+   - Compute gradient $g$ on current batch.
+   - Sample batch from memory, compute reference gradient $g_{ref}$.
+   - If $g \cdot g_{ref} < 0$, project $g$:
+     $$ \tilde{g} = g - \frac{g \cdot g_{ref}}{g_{ref} \cdot g_{ref}} g_{ref} $$
+   - Update model with $\tilde{g}$.
+
+## Run Command
+
+```bash
+python tests/run_agem_baseline.py --seed 42 --width_multiplier 2 --epochs 4 --save_results
+```
+
+---
+
+# 5. Progressive Neural Networks (`run_pnn_baseline.py`)
 
 ## Purpose
 
@@ -547,8 +726,10 @@ def evaluate_task_agnostic(dataloader):
 | Baseline | Total Parameters | Notes |
 |----------|-----------------|-------|
 | **Gated MoE + EWC** | ~1,888,300 | 4 experts + gater |
-| **Monolithic EWC** | ~6,425,354 | Wide CNN (4× width) |
-| **PNN (capped)** | ~4,103,110 | 4 columns (matches MoB experts) |
+| **Monolithic EWC** | ~1,682,954 | Wide CNN (2× width) - **Matched to MoB** |
+| **A-GEM** | ~1,682,954 | Wide CNN (2× width) - **Matched to MoB** |
+| **Experience Replay** | ~1,682,954 | Wide CNN (2× width) - **Matched to MoB** |
+| **PNN (capped)** | ~1,686,568 | 4 columns (matches MoB experts) |
 | **PNN (unlimited)** | ~2,429,310 | After 5 tasks (grows) |
 | **Task-Aware MoB** | ~1,686,568 | 4 experts (no gater) |
 | **Continual MoB** | ~1,686,568 | 4 experts (no gater) |
@@ -559,6 +740,8 @@ def evaluate_task_agnostic(dataloader):
 |----------|-----------------|----------------|------------------------|
 | **Gated MoE + EWC** | ✓ Known | After each task | Learned gater |
 | **Monolithic EWC** | ✓ Known | After each task | None (single model) |
+| **A-GEM** | ✓ Known | None | Gradient Projection |
+| **Experience Replay** | ✓ Known | None | None (replay buffer) |
 | **PNN** | ✓ Known | None (freezing) | None (column per task) |
 | **Task-Aware MoB** | ✓ Known | After each task | VCG Auction (stateless) |
 | **Continual MoB** | ✗ Unknown | On shift detection | VCG Auction (stateless) |
@@ -569,6 +752,8 @@ def evaluate_task_agnostic(dataloader):
 |----------|-------------|-------------------|-------------------|
 | **Gated MoE + EWC** | ✗ | Learned gater | Gater forgetting |
 | **Monolithic EWC** | N/A | None | Parameter interference |
+| **A-GEM** | N/A | None | Projection approx. / Memory size |
+| **Experience Replay** | N/A | None | Memory size / Sampling bias |
 | **PNN (oracle)** | ✓ | Task ID → Column | None (by construction) |
 | **PNN (agnostic)** | ✗ | Confidence-based | None (by construction) |
 | **Task-Aware MoB** | ✗ | Auction (stateless) | Expert forgetting (EWC mitigates) |
@@ -579,11 +764,11 @@ def evaluate_task_agnostic(dataloader):
 Based on theoretical properties:
 
 ```
-Zero Forgetting: PNN > MoB > Gated MoE ≈ Monolithic EWC
-Task Agnostic:   MoB = Gated MoE = Monolithic EWC > PNN (requires oracle)
-Fixed Params:    MoB = Gated MoE = Monolithic EWC > PNN (grows)
+Zero Forgetting: PNN > MoB > A-GEM ≈ ER > Gated MoE ≈ Monolithic EWC
+Task Agnostic:   MoB = Gated MoE = Monolithic EWC = A-GEM = ER > PNN (requires oracle)
+Fixed Params:    MoB = Gated MoE = Monolithic EWC = A-GEM = ER > PNN (grows)
 Task-Free:       Continual MoB > Task-Aware MoB = others (require boundaries)
-Practical:       Continual MoB > Task-Aware MoB > Monolithic EWC > Gated MoE > PNN
+Practical:       Continual MoB > Task-Aware MoB > ER ≈ A-GEM > Monolithic EWC > Gated MoE > PNN
 ```
 
 ---
@@ -593,5 +778,7 @@ Practical:       Continual MoB > Task-Aware MoB > Monolithic EWC > Gated MoE > P
 - **EWC:** Kirkpatrick et al. (2017) "Overcoming catastrophic forgetting in neural networks" (PNAS)
 - **Online EWC:** Schwarz et al. (2018) "Progress & Compress" (ICML)
 - **PNN:** Rusu et al. (2016) "Progressive Neural Networks" (arXiv)
+- **A-GEM:** Chaudhry et al. (2019) "Efficient Lifelong Learning with A-GEM" (ICLR)
+- **Experience Replay:** Rolnick et al. (2019) "Experience Replay for Continual Learning" (NeurIPS)
 - **MoE/Gating:** Shazeer et al. (2017) "Outrageously Large Neural Networks" (ICLR)
 - **Mixtral:** Jiang et al. (2024) "Mixtral of Experts" (arXiv)

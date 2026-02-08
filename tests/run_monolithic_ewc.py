@@ -43,6 +43,45 @@ from mob.utils import set_seed
 from tests.test_baselines import create_split_mnist
 
 
+# =============================================================================
+# LOCAL EWC ESTIMATOR - Fixes Fisher normalization for Monolithic Baseline
+# =============================================================================
+class EWCForgettingEstimatorBaseline(EWCForgettingEstimator):
+    """
+    Local subclass to fix Fisher normalization for the monolithic baseline.
+    
+    The monolithic model often converges to very small gradients on simple tasks
+    like Split-MNIST Task 1, resulting in a mean Fisher information < 1e-8.
+    The default EWCForgettingEstimator has an epsilon of 1e-8, which causes
+    normalization to be skipped, effectively disabling EWC.
+    
+    This subclass lowers the epsilon to 1e-30 to ensure normalization always happens.
+    """
+    def _normalize_fisher(self):
+        """
+        Normalize Fisher matrix to have mean = 1.0.
+        Override uses epsilon=1e-30 to handle converged models.
+        """
+        if not self.fisher:
+            return
+        
+        # Compute global mean of all Fisher values
+        all_fisher = torch.cat([f.flatten() for f in self.fisher.values()])
+        fisher_mean = all_fisher.mean()
+        
+        # Normalize: divide by mean (with tiny epsilon for stability)
+        epsilon = 1e-30
+        if fisher_mean > 0:
+            for n in self.fisher:
+                self.fisher[n] = self.fisher[n] / (fisher_mean + epsilon)
+                # CRITICAL FIX for Monolithic:
+                # Fisher distribution is extremely skewed (Max ~ 60,000 * Mean).
+                # Normalizing by mean drives 99% of values to ~0, allowing free drift.
+                # We clamp the minimum importance to 0.001 (0.1% of mean) to ensure
+                # basic stability (like L2 regularization) for "unimportant" params.
+                self.fisher[n] = torch.clamp(self.fisher[n], min=0.001)
+
+
 class MonolithicEWC:
     """
     Monolithic model with EWC regularization for continual learning.
@@ -88,8 +127,8 @@ class MonolithicEWC:
         )
         self.model.to(self.device)
         
-        # EWC estimator
-        self.ewc_estimator = EWCForgettingEstimator(
+        # EWC estimator (Use the local fixed version)
+        self.ewc_estimator = EWCForgettingEstimatorBaseline(
             self.model,
             lambda_ewc=lambda_ewc,
             device=self.device
@@ -286,7 +325,7 @@ def run_experiment(train_tasks, test_tasks, config):
         'num_classes': 10,
         'input_channels': 1,
         'dropout': 0.5,
-        'width_multiplier': config.get('width_multiplier', 4)
+        'width_multiplier': config.get('width_multiplier', 2) # 2 matches MoB (1.7M params)
     }
     
     # Create model
@@ -295,6 +334,11 @@ def run_experiment(train_tasks, test_tasks, config):
         lambda_ewc=config['lambda_ewc'],
         device=device
     )
+    
+    # Force lazy initialization of FC layers
+    print("  Initializing lazy layers...")
+    dummy_input = torch.randn(1, 1, 28, 28).to(device)
+    monolith.model(dummy_input)
     
     # Print parameter counts for comparison with MoB
     param_counts = monolith.count_parameters()
@@ -381,8 +425,8 @@ def main():
     parser = argparse.ArgumentParser(description='Run Monolithic EWC experiment')
     
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--width_multiplier', type=int, default=4,
-                        help='Width multiplier for CNN (4 = same params as 4 experts)')
+    parser.add_argument('--width_multiplier', type=int, default=2,
+                        help='Width multiplier for CNN (2 = same params as 4 experts ~1.7M)')
     parser.add_argument('--lambda_ewc', type=float, default=10.0)
     parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=4)
