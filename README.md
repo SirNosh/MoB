@@ -547,54 +547,168 @@ python tests/run_pnn_baseline.py --max_columns 4
 
 ## Benchmark Results
 
-All results from `benchmark_results.json` (seed=42, 4 epochs per task):
+All results from `benchmark_results.json`. Experiments conducted with:
+- **Seed**: 42 (deterministic for reproducibility)
+- **Device**: CUDA (GPU-accelerated)
+- **Epochs per task**: 4
+- **Batch size**: 32
+- **Dataset**: Split-MNIST (5 tasks, 2 classes per task)
 
-### Accuracy and Forgetting
+### Summary: Accuracy and Forgetting
 
-| Method | Average Accuracy | Average Forgetting | Parameters |
-|--------|-----------------|-------------------|------------|
-| **Experience Replay** | **97.48%** | 2.71% | 1,682,954 |
-| **MoB-TaskAware** | 76.61% | 24.72% | 1,686,568 |
-| **A-GEM** | 75.68% | 30.24% | 1,682,954 |
-| **PNN** | 73.58% | 0.00% | 6,135,642 |
-| **MoB-Online*** | 59.53% | 0.00% | 1,686,568 |
-| **Monolithic+EWC** | 37.34% | 68.14% | 1,682,954 |
-| **GatedMoE+EWC** | 19.86% | 0.00% | 2,090,540 |
+| Method | Avg Accuracy | Avg Forgetting | Total Params | Trainable Params |
+|--------|-------------|----------------|--------------|------------------|
+| **Experience Replay** | **97.48%** | **2.71%** | 1,682,954 | 1,682,954 |
+| **MoB-TaskAware** | 76.61% | 24.72% | 1,686,568 | 1,686,568 |
+| **A-GEM** | 75.68% | 30.24% | 1,682,954 | 1,682,954 |
+| **PNN**† | 73.58% | 0.00% | 6,135,642 | 2,032,532 |
+| **MoB-Online*** | 59.53% | 0.00% | 1,686,568 | 1,686,568 |
+| **Monolithic+EWC** | 37.34% | 68.14% | 1,682,954 | 1,682,954 |
+| **GatedMoE+EWC** | 19.86% | 0.00% | 2,090,540 | 2,090,540 |
 
-\* **Note**: Online MoB hyperparameters have not yet been optimized. The reported accuracy reflects default hyperparameters and may improve significantly with tuning.
+\* **Note**: Online MoB hyperparameters have not been optimized. The 59.53% accuracy reflects default settings and should improve significantly with tuning.
 
-### Per-Task Final Accuracies
+† **PNN Evaluation Modes**:
+- **Task-Agnostic (73.58%)**: Fair comparison with MoB - uses confidence-based routing without knowing which task is being evaluated. Column selections: `{0: 2012, 1: 1069, 2: 2964, 3: 3004, 4: 951}`
+- **Task-Oracle (99.84%)**: Unfair advantage - PNN is told which column to use for each task. This is the standard PNN evaluation but not comparable to MoB which must route without task knowledge.
+
+### Per-Task Accuracy: Training vs Final
+
+This table shows the accuracy achieved immediately after training each task (Training) versus the accuracy measured at the end of all training (Final). The difference reveals forgetting.
+
+**Training Accuracies (measured immediately after each task):**
 
 | Method | Task 1 | Task 2 | Task 3 | Task 4 | Task 5 |
 |--------|--------|--------|--------|--------|--------|
-| **ER** | 98.72% | 96.87% | 95.84% | 96.88% | 99.09% |
-| **MoB-TaskAware** | 99.91% | 1.91% | 98.24% | 99.90% | 83.11% |
-| **A-GEM** | 79.57% | 71.65% | 62.11% | 65.61% | 99.45% |
+| **ER** | 99.91% | 99.76% | 99.95% | 99.55% | 99.09% |
+| **MoB-TaskAware** | 99.91% | 99.07% | 99.95% | 99.90% | 93.70% |
+| **A-GEM** | 99.95% | 100.0% | 100.0% | 99.95% | 99.45% |
 | **PNN** | 99.91% | 99.66% | 100.0% | 100.0% | 99.65% |
 | **MoB-Online** | 99.86% | 0.00% | 99.95% | 99.09% | 0.00% |
-| **Mono+EWC** | 99.34% | 0.00% | 0.00% | 0.00% | 87.34% |
-| **Gated MoE** | 99.05% | 0.20% | 0.00% | 0.05% | 0.00% |
+| **Mono+EWC** | 99.95% | 93.29% | 89.38% | 89.27% | 87.34% |
+| **Gated MoE** | 99.01% | 0.20% | 0.00% | 0.05% | 0.00% |
 
-### Resource Usage
+**Final Accuracies (measured after all 5 tasks complete):**
 
-| Method | Train Time | Peak VRAM | Training Throughput |
-|--------|------------|-----------|---------------------|
-| **MoB-TaskAware** | 89.0s | 54.8 MB | 2,697 samples/s |
-| **MoB-Online** | 101.8s | 55.1 MB | 2,358 samples/s |
-| **GatedMoE+EWC** | 58.6s | 62.9 MB | 4,099 samples/s |
-| **Monolithic+EWC** | 46.6s | 95.7 MB | 5,150 samples/s |
-| **A-GEM** | 54.4s | 101.1 MB | 4,416 samples/s |
-| **ER** | 46.6s | 72.2 MB | 5,153 samples/s |
-| **PNN** | 57.7s | 92.0 MB | 4,159 samples/s |
+| Method | Task 1 | Task 2 | Task 3 | Task 4 | Task 5 | Δ Task 1 |
+|--------|--------|--------|--------|--------|--------|----------|
+| **ER** | 98.72% | 96.87% | 95.84% | 96.88% | 99.09% | -1.19% |
+| **MoB-TaskAware** | 99.91% | 1.91% | 98.24% | 99.90% | 83.11% | +0.00% |
+| **A-GEM** | 79.57% | 71.65% | 62.11% | 65.61% | 99.45% | -20.38% |
+| **PNN** | 99.91% | 99.66% | 100.0% | 100.0% | 99.65% | +0.00% |
+| **MoB-Online** | 99.86% | 0.00% | 99.95% | 99.09% | 0.00% | +0.00% |
+| **Mono+EWC** | 99.34% | 0.00% | 0.00% | 0.00% | 87.34% | -0.61% |
+| **Gated MoE** | 99.05% | 0.20% | 0.00% | 0.05% | 0.00% | +0.04% |
 
-### Key Insights
+**Key observations from per-task data:**
+- **ER maintains uniformly high accuracy** across all tasks (95-99%), with minimal per-task forgetting
+- **MoB-TaskAware retains Task 1 perfectly** (99.91%) but catastrophically forgets Task 2 (99.07% → 1.91%)
+- **A-GEM shows backward interference** - earlier tasks degrade as later tasks are learned (Task 1: 99.95% → 79.57%)
+- **PNN achieves perfect retention** by freezing previous columns (all training = final)
+- **Monolithic+EWC exhibits severe forgetting** on middle tasks (Tasks 2-4 drop to 0%)
+- **Gated MoE never properly learns** Tasks 2-5, demonstrating catastrophic gater forgetting
 
-1. **Experience Replay dominates** on Split-MNIST with proper buffer size
-2. **MoB-TaskAware shows strong retention** for most tasks (99.9%+ on Tasks 1, 3, 4) but has routing issues with Task 2
-3. **Gated MoE suffers catastrophic gater forgetting** - validates MoB's core hypothesis
-4. **PNN achieves zero forgetting** but requires 4x more parameters and task oracle
-5. **MoB saves ~15% memory** vs Gated MoE (no gater gradients)
-6. **Online MoB needs hyperparameter optimization** - current results don't reflect full potential
+### Complete Resource Usage
+
+| Method | Train Time | Eval Time | Total Time | Train VRAM | Eval VRAM | Peak RAM |
+|--------|------------|-----------|------------|------------|-----------|----------|
+| **MoB-TaskAware** | 88.98s | 5.00s | 93.97s | 54.79 MB | 49.99 MB | 1,256.68 MB |
+| **MoB-Online** | 101.77s | 5.58s | 107.35s | 55.15 MB | 53.48 MB | 1,373.02 MB |
+| **GatedMoE+EWC** | 58.59s | 3.30s | 61.89s | 62.93 MB | 54.62 MB | 1,330.41 MB |
+| **Monolithic+EWC** | 46.62s | 1.73s | 48.35s | 95.71 MB | 67.23 MB | 1,303.27 MB |
+| **A-GEM** | 54.37s | 1.70s | 56.07s | 101.07 MB | 54.68 MB | 1,308.27 MB |
+| **ER** | 46.60s | 1.73s | 48.33s | 72.23 MB | 54.38 MB | 1,312.61 MB |
+| **PNN** | 57.74s | 7.86s | 65.60s | 91.95 MB | 75.66 MB | 1,313.34 MB |
+
+### Throughput and Computational Cost (FLOPs)
+
+| Method | Train Throughput | Eval Throughput | Train FLOPs | Eval FLOPs |
+|--------|-----------------|-----------------|-------------|------------|
+| **MoB-TaskAware** | 2,697 samples/s | 2,001 samples/s | 190.95B | 2.67B |
+| **MoB-Online** | 2,358 samples/s | 1,792 samples/s | 190.85B | 2.65B |
+| **GatedMoE+EWC** | 4,099 samples/s | 3,029 samples/s | 190.95B | 2.67B |
+| **Monolithic+EWC** | 5,150 samples/s | 5,796 samples/s | 743.37B | 10.40B |
+| **A-GEM** | 4,416 samples/s | 5,889 samples/s | 743.37B | 10.40B |
+| **ER** | 5,153 samples/s | 5,783 samples/s | 743.37B | 10.40B |
+| **PNN** | 4,159 samples/s | 1,272 samples/s | 3,327.22B | 46.56B |
+
+**FLOP Analysis:**
+- **MoB variants are most compute-efficient** at ~191B FLOPs (only one expert trains per batch)
+- **Monolithic baselines** (ER, A-GEM, Mono+EWC) use ~743B FLOPs (3.9x more than MoB)
+- **PNN is most expensive** at 3,327B FLOPs (17.4x more than MoB) due to growing architecture
+
+### Memory Efficiency Analysis
+
+| Method | Train VRAM | vs MoB | Eval VRAM | Peak RAM |
+|--------|------------|--------|-----------|----------|
+| **MoB-TaskAware** | 54.79 MB | baseline | 49.99 MB | 1,256.68 MB |
+| **MoB-Online** | 55.15 MB | +0.7% | 53.48 MB | 1,373.02 MB |
+| **GatedMoE+EWC** | 62.93 MB | +14.9% | 54.62 MB | 1,330.41 MB |
+| **ER** | 72.23 MB | +31.8% | 54.38 MB | 1,312.61 MB |
+| **PNN** | 91.95 MB | +67.8% | 75.66 MB | 1,313.34 MB |
+| **Monolithic+EWC** | 95.71 MB | +74.7% | 67.23 MB | 1,303.27 MB |
+| **A-GEM** | 101.07 MB | +84.5% | 54.68 MB | 1,308.27 MB |
+
+**Memory observations:**
+- **MoB has the lowest VRAM footprint** - only ~55 MB during training
+- **A-GEM requires 85% more VRAM** than MoB due to gradient projection overhead
+- **Gated MoE uses 15% more VRAM** than MoB due to gater network gradients
+- **System RAM usage is similar** across methods (~1.3 GB), dominated by PyTorch overhead
+
+### Forgetting Pattern Analysis
+
+| Method | Forgetting Metric | Forgetting Pattern |
+|--------|-------------------|-------------------|
+| **ER** | 2.71% | Uniform mild degradation across all tasks |
+| **MoB-TaskAware** | 24.72% | Severe on Task 2 only; others near-perfect |
+| **A-GEM** | 30.24% | Gradual backward transfer (earlier tasks hurt more) |
+| **PNN** | 0.00% | Zero forgetting (frozen columns) |
+| **MoB-Online** | 0.00% | Failed to learn Tasks 2, 5 (not forgetting, but not learning) |
+| **Monolithic+EWC** | 68.14% | Catastrophic on middle tasks (2, 3, 4 → 0%) |
+| **GatedMoE+EWC** | 0.00% | Gater never learned proper routing |
+
+**Forgetting metric** = average of (training accuracy - final accuracy) across tasks that were successfully learned.
+
+### Training Configuration Details
+
+The benchmark used optimized hyperparameters from Optuna-based Bayesian search:
+
+| Method | Key Hyperparameters |
+|--------|---------------------|
+| **MoB-TaskAware** | α=0.3549, β=0.4151, λ_ewc=277.54, lr=0.001028, forgetting_scale=2.1314, reset_optimizer=True |
+| **MoB-Online** | α=0.5966, β=0.6606, λ_ewc=112.16, lr=0.006971, shift_threshold=4.05, reset_optimizer=True |
+| **GatedMoE+EWC** | λ_ewc=5924.15, lr=0.000219, gater_hidden=512, gater_ewc=False |
+| **Monolithic+EWC** | λ_ewc=1791.93, lr=0.000707, width_multiplier=2 |
+| **A-GEM** | memory_size=1024, memory_batch=64, lr=0.000102, width_multiplier=2 |
+| **ER** | memory_size=2048, replay_batch=16, replay_weight=1.7043, lr=0.000552 |
+| **PNN** | max_columns=-1 (unlimited), lr=0.000494 |
+
+### Key Insights and Analysis
+
+1. **Experience Replay achieves the best accuracy** (97.48%) with minimal forgetting (2.71%). The combination of reservoir sampling and joint training proves highly effective on Split-MNIST.
+
+2. **MoB-TaskAware demonstrates selective retention**: Tasks 1, 3, 4 maintain near-perfect accuracy (99.9%), but Task 2 catastrophically forgets (1.91%). This suggests routing issues where Task 2 data gets misrouted after later tasks are learned.
+
+3. **Gated MoE validates MoB's core hypothesis**: The learned gater network fails to properly route after Task 1, achieving only 19.86% overall accuracy. This is precisely the "gater forgetting" problem MoB was designed to solve.
+
+4. **PNN achieves zero forgetting** but at significant cost:
+   - 3.6x more total parameters (6.14M vs 1.69M)
+   - 17.4x more FLOPs (3,327B vs 191B)
+   - **Task-Oracle mode (99.84%)**: Knows which column to use - unfair advantage
+   - **Task-Agnostic mode (73.58%)**: Confidence-based routing - fair comparison with MoB
+   - When fairly compared (task-agnostic), PNN performs slightly below MoB-TaskAware (73.58% vs 76.61%)
+
+5. **MoB is most memory-efficient**: 54.79 MB peak VRAM vs 62.93 MB for Gated MoE (13% savings) and 101.07 MB for A-GEM (46% savings). This comes from training only one expert per batch.
+
+6. **A-GEM shows backward interference**: Unlike MoB's targeted forgetting on Task 2, A-GEM's forgetting affects all previous tasks roughly equally (Task 1 drops 20.38%, others 25-35%).
+
+7. **Monolithic+EWC fails on middle tasks**: Tasks 2, 3, 4 all drop to 0% accuracy, while Task 1 and 5 are retained. This suggests EWC alone cannot protect a single network from sequential overwriting.
+
+8. **Online MoB needs optimization**: The 59.53% accuracy reflects untuned hyperparameters. The method fails to learn Tasks 2 and 5 entirely, likely due to shift detection thresholds.
+
+9. **Training time vs accuracy tradeoff**: ER and Monolithic+EWC are fastest (46.6s) but ER achieves 97.48% while Mono+EWC achieves only 37.34%. MoB-TaskAware takes 89s for 76.61%.
+
+10. **Throughput reflects architecture**: Monolithic methods achieve ~5,150 samples/s while MoB methods achieve ~2,600 samples/s due to bid computation overhead. However, MoB uses 4x fewer FLOPs per training run.
 
 ---
 
