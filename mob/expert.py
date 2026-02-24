@@ -55,37 +55,38 @@ class MoBExpert:
     def compute_bid(self, x: torch.Tensor, y: torch.Tensor) -> Tuple[float, Dict]:
         """
         Computes the expert's bid using RAW SCALED normalization:
-        
-        1. Execution cost: Raw value scaled (no Z-Score, no per-expert averaging)
+
+        1. Execution cost: Raw value scaled (lower = better at predicting)
         2. Forgetting cost: Log-scale (natural compression of 0 to 500,000+ range)
-        
-        This approach:
-        - Lower exec cost = lower bid = wins (correct incentive!)
-        - No per-expert averaging that erases winner's advantage
-        - Log forget naturally handles huge forgetting cost ranges
-        - Preserves VCG independence (each bid depends only on own costs)
+
+        Forgetting cost interpretation:
+        - LOW forgetting cost = expert predicts well (small gradients) OR unrelated Fisher
+        - HIGH forgetting cost = expert predicts badly AND Fisher overlaps with gradients
+
+        Formula: bid = α × exec_cost + β × forget_cost
+        Lower bid = wins (argmin in auction)
         """
         self.total_batches_seen += 1
-        
+
         # Get raw costs
         raw_exec = self.exec_estimator.compute_predicted_loss(x, y)
         raw_forget = self.forget_estimator.compute_forgetting_cost(x, y)
-        
+
         # === EXECUTION COST: Raw scaled ===
         # Cross-entropy on 10-class starts at ~2.3, drops to ~0.1 when learned
         # Scale to reasonable range (~0 to 1)
         import math
         norm_exec = raw_exec / 2.5
-        
+
         # === FORGETTING COST: Log-scale normalization ===
         # Handles the huge range (0 to 500,000+) naturally
         # log(1 + x) maps: 0 -> 0, 100 -> 4.6, 10000 -> 9.2, 100000 -> 11.5
         log_forget = math.log1p(raw_forget)
         norm_forget = log_forget / 10.0  # Scale to ~0 to 1.5 range
-        
-        # Compute final bid
+
+        # Compute final bid: ADD forgetting cost (low forget = low bid = wins)
         bid = self.alpha * norm_exec + self.beta * norm_forget
-        
+
         components = {
             'exec_cost': raw_exec,
             'forget_cost': raw_forget,

@@ -113,17 +113,18 @@ class ExpertPool:
         dataloader: torch.utils.data.DataLoader
     ) -> Dict:
         """
-        Evaluates the MoB system using confidence-based expert routing.
-        
+        Evaluates the MoB system using pseudo-label auction routing.
+
         IMPORTANT: This method does NOT use ground truth labels for routing.
-        Instead, it selects the expert with highest prediction confidence
-        (maximum softmax probability), which is the standard, fair approach
-        for MoE evaluation in continual learning research.
-        
-        Reference: This follows the evaluation protocol from:
-        - Aljundi et al. (2017) "Expert Gate"
-        - Rusu et al. (2016) "Progressive Neural Networks"
+        Instead, it uses pseudo-labels (model's own predictions) to compute
+        bids, then routes to the expert with lowest bid.
+
+        Key insight: Expert that's already good at this data will have:
+        - Low exec_cost (low loss on its own predictions)
+        - Low forget_cost (small gradients = already settled on this data)
+        - Therefore LOW bid = WINS the auction
         """
+        import math
         results = {}
         all_labels = []
         winner_preds = []
@@ -143,30 +144,40 @@ class ExpertPool:
             accuracy = correct / total if total > 0 else 0.0
             results[f'expert_{i}_accuracy'] = accuracy
 
-        # 2. Calculate MoB accuracy using CONFIDENCE-BASED routing (no labels!)
+        # 2. Calculate MoB accuracy using PSEUDO-LABEL AUCTION routing (no ground truth labels!)
         for x, y in dataloader:
             x_device = x.to(self.device)
             y_device = y.to(self.device)
             all_labels.append(y_device.cpu())
 
-            batch_confidences = np.zeros(self.num_experts)
+            batch_bids = np.zeros(self.num_experts)
             batch_logits = []
 
-            # Determine the winner based on prediction CONFIDENCE (not loss!)
-            # This is the key fix: we use softmax confidence, not cross-entropy with true labels
+            # Compute logits and bids for all experts using pseudo-labels
             for i, expert in enumerate(self.experts):
                 expert.model.eval()
                 with torch.no_grad():
                     logits = expert.model(x_device)
-                    # Compute confidence as mean of max softmax probabilities
-                    probs = F.softmax(logits, dim=-1)
-                    confidence = probs.max(dim=-1).values.mean()
-                    batch_confidences[i] = confidence.item()
                     batch_logits.append(logits)
 
-            # The winner is the expert with HIGHEST confidence (argmax, not argmin!)
-            winner_id = np.argmax(batch_confidences)
-            
+                # Use pseudo-labels (model's own predictions) instead of ground truth
+                pseudo_labels = logits.argmax(dim=-1).detach()
+
+                # Compute execution cost with pseudo-labels
+                raw_exec = F.cross_entropy(logits, pseudo_labels).item()
+
+                # Compute forgetting cost with pseudo-labels
+                forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
+
+                # Same bid formula as training
+                norm_exec = raw_exec / 2.5
+                norm_forget = math.log1p(forget_cost) / 10.0
+                bid = expert.alpha * norm_exec + expert.beta * norm_forget
+                batch_bids[i] = bid
+
+            # Select Winner: Lowest Bid = WINS the auction
+            winner_id = np.argmin(batch_bids)
+
             # Get the winning expert's predictions for this batch
             winning_logits = batch_logits[winner_id]
             winning_preds_batch = winning_logits.argmax(dim=-1).cpu()
@@ -176,9 +187,8 @@ class ExpertPool:
         if all_labels:
             all_labels = torch.cat(all_labels)
             winner_preds = torch.cat(winner_preds)
-            
+
             # Calculate the final accuracy based on the winners' predictions
-            # The key 'ensemble_accuracy' is kept for consistency with the benchmark script
             ensemble_accuracy = (winner_preds == all_labels).float().mean().item()
             results['ensemble_accuracy'] = ensemble_accuracy
         else:

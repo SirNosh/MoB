@@ -1,0 +1,118 @@
+
+======================================================================
+ABLATION ANALYSIS: MOB
+======================================================================
+Total completed trials: 15
+
+
+--- Effect of lambda_ewc ---
+                    count    mean     std     min     max
+param_bin                                                
+(107.399, 305.762]      9  0.6812  0.0158  0.6556  0.7018
+(305.762, 503.138]      4  0.6814  0.0187  0.6565  0.7010
+(503.138, 700.514]      1  0.6787     NaN  0.6787  0.6787
+(700.514, 897.89]       0     NaN     NaN     NaN     NaN
+(897.89, 1095.266]      1  0.6137     NaN  0.6137  0.6137
+
+--- Effect of alpha ---
+                count    mean     std     min     max
+param_bin                                            
+(0.302, 0.381]      4  0.6708  0.0392  0.6137  0.7018
+(0.381, 0.459]      1  0.6753     NaN  0.6753  0.6753
+(0.459, 0.537]      2  0.6873  0.0109  0.6796  0.6950
+(0.537, 0.615]      3  0.6885  0.0114  0.6787  0.7010
+(0.615, 0.693]      5  0.6700  0.0181  0.6556  0.6971
+
+--- Effect of beta ---
+                count    mean     std     min     max
+param_bin                                            
+(0.37, 0.434]       3  0.6588  0.0441  0.6137  0.7018
+(0.434, 0.499]      2  0.6898  0.0157  0.6787  0.7010
+(0.499, 0.563]      1  0.6753     NaN  0.6753  0.6753
+(0.563, 0.628]      3  0.6779  0.0204  0.6565  0.6971
+(0.628, 0.692]      6  0.6807  0.0135  0.6556  0.6950
+
+--- Effect of learning_rate ---
+                     count    mean     std     min     max
+param_bin                                                 
+(0.00052, 0.000833]      2  0.6718  0.0229  0.6556  0.6880
+(0.000833, 0.00114]      4  0.6921  0.0111  0.6796  0.7018
+(0.00114, 0.00146]       4  0.6662  0.0363  0.6137  0.6971
+(0.00146, 0.00177]       1  0.6802     NaN  0.6802  0.6802
+(0.00177, 0.00208]       4  0.6730  0.0178  0.6565  0.6950
+
+--- Effect of forgetting_cost_scale ---
+                count    mean     std     min     max
+param_bin                                            
+(0.888, 1.298]      3  0.6625  0.0111  0.6556  0.6753
+(1.298, 1.705]      1  0.6137     NaN  0.6137  0.6137
+(1.705, 2.113]      3  0.6916  0.0115  0.6787  0.7010
+(2.113, 2.521]      4  0.6897  0.0114  0.6798  0.7018
+(2.521, 2.929]      4  0.6786  0.0124  0.6608  0.6880
+
+--- Two-way Interactions ---
+
+alpha × beta:
+beta      0.369869  0.415092  0.416858  0.446342  0.463541  0.509903  0.586655  0.592798  0.616672  0.632977  0.644749  0.646470  0.647322  0.687815  0.692263
+alpha                                                                                                                                                         
+0.302399       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN     0.688       NaN
+0.323233       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN    0.6798       NaN       NaN       NaN
+0.354906       NaN    0.7018       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.355798       NaN       NaN    0.6137       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.421697       NaN       NaN       NaN       NaN       NaN    0.6753       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.511112       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN    0.6796       NaN       NaN       NaN       NaN
+0.530836       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN     0.695
+0.572598       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN    0.6858       NaN       NaN
+0.591934       NaN       NaN       NaN    0.6787       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.611358       NaN       NaN       NaN       NaN     0.701       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.627627       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN    0.6971       NaN       NaN       NaN       NaN       NaN       NaN
+0.646432       NaN       NaN       NaN       NaN       NaN       NaN    0.6802       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.680286       NaN       NaN       NaN       NaN       NaN       NaN       NaN    0.6565       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+0.687964       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN    0.6556       NaN       NaN       NaN       NaN       NaN
+0.693276    0.6608       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN       NaN
+
+alpha × lambda_ewc:
+lambda_ewc  108.385813   184.089921   188.600562   204.926801   230.296654   231.940700   277.538196   278.776523   279.032374   347.963836   358.206080   404.526654   432.845022   613.784259   1095.266275
+alpha                                                                                                                                                                                                        
+0.302399            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN        0.688          NaN          NaN          NaN
+0.323233            NaN       0.6798          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.354906            NaN          NaN          NaN          NaN          NaN          NaN       0.7018          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.355798            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6137
+0.421697            NaN          NaN          NaN       0.6753          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.511112            NaN          NaN          NaN          NaN          NaN       0.6796          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.530836            NaN          NaN        0.695          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.572598            NaN          NaN          NaN          NaN       0.6858          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.591934            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6787          NaN
+0.611358            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN        0.701          NaN          NaN          NaN          NaN
+0.627627            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6971          NaN          NaN          NaN          NaN          NaN          NaN
+0.646432            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6802          NaN          NaN          NaN          NaN          NaN
+0.680286            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6565          NaN          NaN
+0.687964         0.6556          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.693276            NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6608          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+
+beta × lambda_ewc:
+lambda_ewc  108.385813   184.089921   188.600562   204.926801   230.296654   231.940700   277.538196   278.776523   279.032374   347.963836   358.206080   404.526654   432.845022   613.784259   1095.266275
+beta                                                                                                                                                                                                         
+0.369869            NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6608          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.415092            NaN          NaN          NaN          NaN          NaN          NaN       0.7018          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.416858            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6137
+0.446342            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6787          NaN
+0.463541            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN        0.701          NaN          NaN          NaN          NaN
+0.509903            NaN          NaN          NaN       0.6753          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.586655            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6802          NaN          NaN          NaN          NaN          NaN
+0.592798            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6565          NaN          NaN
+0.616672            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN       0.6971          NaN          NaN          NaN          NaN          NaN          NaN
+0.632977         0.6556          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.644749            NaN          NaN          NaN          NaN          NaN       0.6796          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.646470            NaN       0.6798          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.647322            NaN          NaN          NaN          NaN       0.6858          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+0.687815            NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN        0.688          NaN          NaN          NaN
+0.692263            NaN          NaN        0.695          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN          NaN
+
+--- Top 5 Configurations ---
+ lambda_ewc    alpha     beta  learning_rate  forgetting_cost_scale  mean_accuracy  std_accuracy
+ 277.538196 0.354906 0.415092       0.001028               2.131361       0.701849      0.037746
+ 358.206080 0.611358 0.463541       0.001114               1.852123       0.700967      0.037889
+ 279.032374 0.627627 0.616672       0.001285               2.476051       0.697066      0.052462
+ 188.600562 0.530836 0.692263       0.002079               2.055210       0.695028      0.075115
+ 404.526654 0.302399 0.687815       0.000521               2.584079       0.688013      0.045737

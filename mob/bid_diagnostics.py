@@ -130,7 +130,7 @@ class BidLogger:
             Only analyze the last N batches. If None, analyzes all batches.
         """
         if self.stats['num_batches'] == 0:
-            print("⚠  No batches logged yet.")
+            print("[WARN] No batches logged yet.")
             return
 
         # Determine which batches to analyze
@@ -163,9 +163,9 @@ class BidLogger:
 
                 # Check if exec cost is near zero (alpha signal ignored)
                 if mean_exec < 1e-6:
-                    print(f"    ⚠  WARNING: Execution cost near zero! Alpha signal may be ignored.")
+                    print(f"    [WARN]  WARNING: Execution cost near zero! Alpha signal may be ignored.")
                 elif std_exec < 1e-8:
-                    print(f"    ⚠  WARNING: No variance in execution cost! All batches look the same.")
+                    print(f"    [WARN]  WARNING: No variance in execution cost! All batches look the same.")
 
         # Issue 2: Is beta (ForgettingCost) too high preventing learning?
         print("\n[2] BETA SIGNAL CHECK (Forgetting Cost)")
@@ -191,14 +191,14 @@ class BidLogger:
 
                 # Check if forgetting cost dominates
                 if ratio > 100:
-                    print(f"    🔴 CRITICAL: Forgetting cost is {ratio:.0f}x execution cost!")
+                    print(f"    [CRITICAL] CRITICAL: Forgetting cost is {ratio:.0f}x execution cost!")
                     print(f"       This prevents experts from learning new tasks.")
-                    print(f"       Consider: reducing β, reducing λ_EWC, or increasing α")
+                    print(f"       Consider: reducing beta, reducing lambda_EWC, or increasing alpha")
                 elif ratio > 10:
-                    print(f"    ⚠  WARNING: Forgetting cost is {ratio:.0f}x execution cost.")
+                    print(f"    [WARN]  WARNING: Forgetting cost is {ratio:.0f}x execution cost.")
                     print(f"       Learning may be significantly hindered.")
                 elif ratio < 0.01:
-                    print(f"    ⚠  WARNING: Forgetting cost is negligible ({ratio:.4f}x).")
+                    print(f"    [WARN]  WARNING: Forgetting cost is negligible ({ratio:.4f}x).")
                     print(f"       EWC may not be preventing forgetting effectively.")
 
         # Issue 3: Are bids exploding or vanishing?
@@ -220,19 +220,19 @@ class BidLogger:
 
                 # Check for exploding bids
                 if max_bid > 1e6:
-                    print(f"    🔴 CRITICAL: Bids are exploding! Max bid = {max_bid:.2e}")
+                    print(f"    [CRITICAL] CRITICAL: Bids are exploding! Max bid = {max_bid:.2e}")
                     print(f"       This indicates numerical instability.")
                 elif max_bid > 1e3:
-                    print(f"    ⚠  WARNING: Bids are very large (max = {max_bid:.2f})")
+                    print(f"    [WARN]  WARNING: Bids are very large (max = {max_bid:.2f})")
 
                 # Check for vanishing bids
                 if mean_bid < 1e-6:
-                    print(f"    ⚠  WARNING: Bids are vanishing! Mean bid = {mean_bid:.2e}")
-                    print(f"       Check if both α and β are too small.")
+                    print(f"    [WARN]  WARNING: Bids are vanishing! Mean bid = {mean_bid:.2e}")
+                    print(f"       Check if both alpha and beta are too small.")
 
                 # Check for NaN or inf
                 if np.any(np.isnan(bids)) or np.any(np.isinf(bids)):
-                    print(f"    🔴 CRITICAL: Bids contain NaN or Inf values!")
+                    print(f"    [CRITICAL] CRITICAL: Bids contain NaN or Inf values!")
 
         # Issue 4: Expert specialization
         print("\n[4] EXPERT WIN DISTRIBUTION")
@@ -244,7 +244,7 @@ class BidLogger:
             win_rate = wins / total_wins if total_wins > 0 else 0
 
             bar_length = int(win_rate * 40)
-            bar = "█" * bar_length + "░" * (40 - bar_length)
+            bar = "#" * bar_length + "-" * (40 - bar_length)
 
             print(f"  Expert {expert_id}: {bar} {win_rate*100:5.1f}% ({wins}/{total_wins})")
 
@@ -253,7 +253,7 @@ class BidLogger:
         max_win_rate = max_wins / total_wins if total_wins > 0 else 0
 
         if max_win_rate > 0.8:
-            print(f"\n  ⚠  WARNING: One expert dominates ({max_win_rate*100:.1f}% of batches)")
+            print(f"\n  [WARN]  WARNING: One expert dominates ({max_win_rate*100:.1f}% of batches)")
             print(f"     This may indicate poor auction dynamics.")
 
         # Check for equal distribution (no specialization)
@@ -262,7 +262,7 @@ class BidLogger:
         variance = np.var(actual_rates)
 
         if variance < 0.001:
-            print(f"\n  ⚠  WARNING: Nearly uniform win distribution (variance={variance:.6f})")
+            print(f"\n  [WARN]  WARNING: Nearly uniform win distribution (variance={variance:.6f})")
             print(f"     Experts may not be specializing effectively.")
 
         print("\n" + "="*80)
@@ -298,7 +298,7 @@ class BidLogger:
         log = self.get_batch_details(batch_idx)
 
         if log is None:
-            print(f"⚠  Batch {batch_idx} not found in logs.")
+            print(f"[WARN]  Batch {batch_idx} not found in logs.")
             return
 
         print(f"\n" + "="*80)
@@ -307,11 +307,11 @@ class BidLogger:
             print(f"Task ID: {log['task_id']}")
         print("="*80)
 
-        print(f"\n{'Expert':>10} {'Exec Cost':>12} {'Forget Cost':>12} {'α':>6} {'β':>6} {'Bid':>12} {'Winner':>8}")
+        print(f"\n{'Expert':>10} {'Exec Cost':>12} {'Forget Cost':>12} {'alpha':>6} {'beta':>6} {'Bid':>12} {'Winner':>8}")
         print("-" * 80)
 
         for expert_data in log['experts']:
-            winner_mark = "✓" if expert_data['is_winner'] else ""
+            winner_mark = "[OK]" if expert_data['is_winner'] else ""
 
             print(f"{expert_data['expert_id']:>10} "
                   f"{expert_data['exec_cost']:>12.6f} "
@@ -377,7 +377,7 @@ class BidLogger:
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)
 
-        print(f"✓ Bid logs saved to: {filepath}")
+        print(f"[OK] Bid logs saved to: {filepath}")
 
     def load_logs(self, filepath: str):
         """
@@ -410,7 +410,7 @@ class BidLogger:
                 self.stats['forget_cost_history'][expert_id].append(expert_data['forget_cost'])
                 self.stats['bid_history'][expert_id].append(expert_data['bid'])
 
-        print(f"✓ Bid logs loaded from: {filepath}")
+        print(f"[OK] Bid logs loaded from: {filepath}")
 
     def plot_bid_components(self, save_path: Optional[str] = None):
         """
@@ -424,7 +424,7 @@ class BidLogger:
         try:
             import matplotlib.pyplot as plt
         except ImportError:
-            print("⚠  Matplotlib not available. Install with: pip install matplotlib")
+            print("[WARN]  Matplotlib not available. Install with: pip install matplotlib")
             return
 
         fig, axes = plt.subplots(3, 1, figsize=(12, 10))
@@ -437,7 +437,7 @@ class BidLogger:
                 alpha=0.7
             )
         axes[0].set_ylabel('Execution Cost')
-        axes[0].set_title('Execution Cost (α signal) Over Time')
+        axes[0].set_title('Execution Cost (alpha signal) Over Time')
         axes[0].legend()
         axes[0].grid(True, alpha=0.3)
 
@@ -449,7 +449,7 @@ class BidLogger:
                 alpha=0.7
             )
         axes[1].set_ylabel('Forgetting Cost')
-        axes[1].set_title('Forgetting Cost (β signal) Over Time')
+        axes[1].set_title('Forgetting Cost (beta signal) Over Time')
         axes[1].legend()
         axes[1].grid(True, alpha=0.3)
 
@@ -470,6 +470,6 @@ class BidLogger:
 
         if save_path:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            print(f"✓ Bid component plot saved to: {save_path}")
+            print(f"[OK] Bid component plot saved to: {save_path}")
         else:
             plt.show()

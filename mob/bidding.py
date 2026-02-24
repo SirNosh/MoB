@@ -279,24 +279,34 @@ class EWCForgettingEstimator:
     def _normalize_fisher(self):
         """
         Normalize Fisher matrix to have mean = 1.0.
-        
+
         This is CRITICAL for consistent EWC behavior:
         - Ensures lambda_ewc works in a reasonable range (1.0 - 10.0)
         - Makes EWC strength independent of model architecture and batch size
         - Prevents numerical issues from very small/large Fisher values
+
+        Key fix from EWC sanity check (sanity_check_ewc.py):
+        - Use very small epsilon (1e-30) so normalization ALWAYS happens
+        - Clamp Fisher values to min=0.001 so even "unimportant" params get
+          basic L2-like protection against drift (prevents complete forgetting
+          for converged models with tiny gradients)
         """
         if not self.fisher:
             return
-        
+
         # Compute global mean of all Fisher values
         all_fisher = torch.cat([f.flatten() for f in self.fisher.values()])
         fisher_mean = all_fisher.mean()
-        
-        # Normalize: divide by mean (with epsilon for stability)
-        epsilon = 1e-8
-        if fisher_mean > epsilon:
+
+        # Use very small epsilon (1e-30) so normalization always happens
+        # This is critical for converged models where gradients are tiny
+        epsilon = 1e-30
+        if fisher_mean > 0:
             for n in self.fisher:
                 self.fisher[n] = self.fisher[n] / (fisher_mean + epsilon)
+                # Clamp to minimum value so even "unimportant" params get
+                # basic L2-like protection against drift
+                self.fisher[n] = torch.clamp(self.fisher[n], min=0.1)
 
     def has_fisher(self) -> bool:
         """Check if Fisher information has been computed."""

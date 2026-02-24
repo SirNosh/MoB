@@ -8,6 +8,7 @@ hyperparameters.
 Usage:
     python tests/analyze_ablation.py results/optuna_search_mob_20260208_*.json
     python tests/analyze_ablation.py results/optuna_search_*.json --plot
+    python tests/analyze_ablation.py results/optuna_search_mob_*.json --plot --focus alpha beta lambda_ewc
 """
 
 import json
@@ -16,7 +17,8 @@ import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
+from itertools import combinations
 
 
 def load_results(pattern: str) -> Dict[str, pd.DataFrame]:
@@ -46,19 +48,29 @@ def load_results(pattern: str) -> Dict[str, pd.DataFrame]:
         # Convert to DataFrame
         df_trials = []
         for trial in trials:
-            if trial['state'] != 'COMPLETE':
+            # Handle multiple state formats:
+            # Optuna saves state as str(TrialState.X) which can be "1" (COMPLETE),
+            # "2" (PRUNED), or "COMPLETE"/"PRUNED" depending on Optuna version
+            state = str(trial.get('state', ''))
+            is_complete = state in ('1', 'COMPLETE', 'TrialState.COMPLETE')
+            if not is_complete:
                 continue  # Skip pruned/failed trials
+
+            # Skip trials with no value
+            if trial.get('value') is None:
+                continue
 
             row = {
                 'trial_number': trial['number'],
                 'mean_accuracy': trial['value'],
-                'std_accuracy': trial['std'],
+                'std_accuracy': trial.get('std') if trial.get('std') is not None else 0.0,
                 **trial['params']  # Unpack all hyperparameters
             }
 
             # Add individual seed accuracies if available
-            if trial.get('all_accs'):
-                for i, acc in enumerate(trial['all_accs']):
+            all_accs = trial.get('all_accs')
+            if all_accs is not None and isinstance(all_accs, list):
+                for i, acc in enumerate(all_accs):
                     row[f'seed_{i}_accuracy'] = acc
 
             df_trials.append(row)
@@ -137,6 +149,254 @@ def interaction_analysis(df: pd.DataFrame, param1: str, param2: str):
     return pivot
 
 
+# ---------------------------------------------------------------------------
+# Focused hyperparameter analysis functions (publication-quality plots)
+# ---------------------------------------------------------------------------
+
+PARAM_LABELS = {
+    'alpha': r'$\alpha$ (Execution Cost Weight)',
+    'beta': r'$\beta$ (Forgetting Cost Weight)',
+    'lambda_ewc': r'$\lambda_{EWC}$ (Regularization Strength)',
+}
+
+LOG_SCALE_PARAMS = {'lambda_ewc'}
+
+
+def _pub_style():
+    """Return matplotlib rcParams overrides for publication-quality plots."""
+    return {
+        'figure.facecolor': 'white',
+        'axes.facecolor': 'white',
+        'font.size': 12,
+        'axes.titlesize': 14,
+        'axes.labelsize': 13,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'figure.dpi': 150,
+    }
+
+
+def marginal_effect_plot(df: pd.DataFrame, param: str, output_dir: Path,
+                         model_type: str):
+    """Scatter + LOWESS + Spearman correlation for one hyperparameter."""
+    import matplotlib.pyplot as plt
+    from scipy.stats import spearmanr
+
+    if param not in df.columns:
+        print(f"  [marginal] Skipping '{param}' — not in data")
+        return
+
+    with plt.rc_context(_pub_style()):
+        fig, ax = plt.subplots(figsize=(6, 4.5))
+
+        x = df[param].values
+        y = df['mean_accuracy'].values
+        yerr = df['std_accuracy'].values
+
+        # Error-bar scatter
+        ax.errorbar(x, y, yerr=yerr, fmt='o', alpha=0.45, markersize=4,
+                     elinewidth=0.8, capsize=2, color='#4C72B0',
+                     label='Trials')
+
+        # LOWESS trend
+        try:
+            from statsmodels.nonparametric.smoothers_lowess import lowess
+            sort_idx = np.argsort(x)
+            smoothed = lowess(y[sort_idx], x[sort_idx], frac=0.4,
+                              return_sorted=True)
+            ax.plot(smoothed[:, 0], smoothed[:, 1], color='#C44E52',
+                    linewidth=2.5, label='LOWESS trend')
+        except ImportError:
+            print("  [marginal] statsmodels not installed — skipping LOWESS")
+
+        # Spearman correlation
+        rho, pval = spearmanr(x, y)
+        ax.annotate(f'Spearman $\\rho$={rho:.3f}  (p={pval:.2e})',
+                    xy=(0.03, 0.97), xycoords='axes fraction',
+                    fontsize=10, va='top',
+                    bbox=dict(boxstyle='round,pad=0.3', fc='wheat',
+                              alpha=0.7))
+
+        label = PARAM_LABELS.get(param, param)
+        ax.set_xlabel(label)
+        ax.set_ylabel('Mean Accuracy')
+        ax.set_title(f'Marginal Effect of {label}')
+        if param in LOG_SCALE_PARAMS:
+            ax.set_xscale('log')
+        ax.legend(loc='lower right', fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+        fig.tight_layout()
+        out_path = output_dir / f'{model_type}_marginal_{param}.png'
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved: {out_path}")
+
+
+def distribution_plot(df: pd.DataFrame, param: str, output_dir: Path,
+                      model_type: str):
+    """Violin plot of accuracy distribution in quantile-based bins."""
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    if param not in df.columns:
+        print(f"  [distribution] Skipping '{param}' — not in data")
+        return
+
+    with plt.rc_context(_pub_style()):
+        fig, ax = plt.subplots(figsize=(6, 4.5))
+
+        tmp = df[[param, 'mean_accuracy']].dropna()
+        try:
+            tmp['bin'] = pd.qcut(tmp[param], q=3, labels=['Low', 'Medium', 'High'],
+                                 duplicates='drop')
+        except ValueError:
+            # Fallback if too few unique values for 3 quantiles
+            tmp['bin'] = pd.cut(tmp[param], bins=3, labels=['Low', 'Medium', 'High'])
+
+        order = ['Low', 'Medium', 'High']
+        present = [o for o in order if o in tmp['bin'].cat.categories]
+
+        sns.violinplot(data=tmp, x='bin', y='mean_accuracy', order=present,
+                       inner='box', palette='Set2', ax=ax)
+
+        # Annotate bin ranges
+        for i, lbl in enumerate(present):
+            subset = tmp[tmp['bin'] == lbl][param]
+            range_str = f'[{subset.min():.3g}, {subset.max():.3g}]'
+            ax.text(i, ax.get_ylim()[0], range_str, ha='center', va='top',
+                    fontsize=8, color='grey')
+
+        label = PARAM_LABELS.get(param, param)
+        ax.set_xlabel(f'{label} (quantile bin)')
+        ax.set_ylabel('Mean Accuracy')
+        ax.set_title(f'Accuracy Distribution by {label}')
+        ax.grid(True, alpha=0.3, axis='y')
+
+        fig.tight_layout()
+        out_path = output_dir / f'{model_type}_distribution_{param}.png'
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved: {out_path}")
+
+
+def heatmap_interaction(df: pd.DataFrame, param1: str, param2: str,
+                        output_dir: Path, model_type: str, n_bins: int = 5):
+    """2-D heatmap of mean accuracy for binned param1 x param2."""
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    if param1 not in df.columns or param2 not in df.columns:
+        print(f"  [heatmap] Skipping '{param1}' x '{param2}' — missing column")
+        return
+
+    with plt.rc_context(_pub_style()):
+        tmp = df[[param1, param2, 'mean_accuracy']].dropna()
+
+        for p in [param1, param2]:
+            try:
+                tmp[f'{p}_bin'] = pd.qcut(tmp[p], q=n_bins, duplicates='drop')
+            except ValueError:
+                tmp[f'{p}_bin'] = pd.cut(tmp[p], bins=min(n_bins, tmp[p].nunique()))
+
+        pivot = tmp.pivot_table(values='mean_accuracy',
+                                index=f'{param1}_bin',
+                                columns=f'{param2}_bin',
+                                aggfunc='mean')
+
+        fig, ax = plt.subplots(figsize=(7, 5.5))
+        sns.heatmap(pivot, annot=True, fmt='.3f', cmap='YlOrRd', ax=ax,
+                    linewidths=0.5, cbar_kws={'label': 'Mean Accuracy'})
+
+        l1 = PARAM_LABELS.get(param1, param1)
+        l2 = PARAM_LABELS.get(param2, param2)
+        ax.set_ylabel(l1)
+        ax.set_xlabel(l2)
+        ax.set_title(f'Interaction: {l1} vs {l2}')
+
+        fig.tight_layout()
+        out_path = output_dir / f'{model_type}_heatmap_{param1}_vs_{param2}.png'
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved: {out_path}")
+
+
+def sensitivity_summary(df: pd.DataFrame, params: List[str],
+                        output_dir: Path, model_type: str):
+    """Bar chart of |Spearman rho| for each param — shows relative importance."""
+    import matplotlib.pyplot as plt
+    from scipy.stats import spearmanr
+
+    with plt.rc_context(_pub_style()):
+        results = []
+        for p in params:
+            if p not in df.columns:
+                continue
+            tmp = df[[p, 'mean_accuracy']].dropna()
+            if len(tmp) < 5:
+                continue
+            rho, pval = spearmanr(tmp[p], tmp['mean_accuracy'])
+            results.append({'param': p, 'abs_rho': abs(rho), 'rho': rho,
+                            'pval': pval})
+
+        if not results:
+            print("  [sensitivity] No valid params for summary")
+            return
+
+        res_df = pd.DataFrame(results).sort_values('abs_rho', ascending=True)
+
+        fig, ax = plt.subplots(figsize=(6, max(3, 0.8 * len(res_df) + 1)))
+        labels = [PARAM_LABELS.get(p, p) for p in res_df['param']]
+        colors = ['#4C72B0' if r >= 0 else '#C44E52' for r in res_df['rho']]
+        bars = ax.barh(labels, res_df['abs_rho'], color=colors, edgecolor='white')
+
+        # Annotate with rho and p-value
+        for bar, row in zip(bars, res_df.itertuples()):
+            sig = '*' if row.pval < 0.05 else ''
+            ax.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height() / 2,
+                    f'$\\rho$={row.rho:+.3f}{sig}',
+                    va='center', fontsize=10)
+
+        ax.set_xlabel('|Spearman $\\rho$|')
+        ax.set_title(f'Hyperparameter Sensitivity ({model_type.upper()})')
+        ax.set_xlim(0, min(1.0, res_df['abs_rho'].max() + 0.15))
+        ax.grid(True, alpha=0.3, axis='x')
+
+        fig.tight_layout()
+        out_path = output_dir / f'{model_type}_sensitivity.png'
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved: {out_path}")
+
+
+def run_focused_analysis(df: pd.DataFrame, model_type: str,
+                         focus_params: List[str], output_dir: Path):
+    """Run all focused analysis plots for the given params."""
+    # Filter to params that actually exist in the data
+    available = [p for p in focus_params if p in df.columns]
+    if not available:
+        print(f"  No focused params found in data for {model_type}")
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n--- Focused Analysis ({model_type.upper()}) ---")
+    print(f"  Params: {available}")
+    print(f"  Output: {output_dir}")
+
+    # Per-param plots
+    for param in available:
+        marginal_effect_plot(df, param, output_dir, model_type)
+        distribution_plot(df, param, output_dir, model_type)
+
+    # Pairwise heatmaps
+    for p1, p2 in combinations(available, 2):
+        heatmap_interaction(df, p1, p2, output_dir, model_type)
+
+    # Sensitivity summary
+    sensitivity_summary(df, available, output_dir, model_type)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Ablation study analysis')
     parser.add_argument('pattern', type=str,
@@ -147,6 +407,11 @@ def main():
                         help='Generate plots (requires matplotlib)')
     parser.add_argument('--output', type=str, default='ablation_results.txt',
                         help='Output file for results')
+    parser.add_argument('--focus', nargs='*', default=None,
+                        help='Hyperparameters for detailed analysis '
+                             '(default: alpha beta lambda_ewc for mob/continual)')
+    parser.add_argument('--outdir', type=str, default='results/ablation_plots',
+                        help='Directory for individual plot PNGs')
 
     args = parser.parse_args()
 
@@ -273,6 +538,32 @@ def main():
 
         except ImportError:
             print("Matplotlib not available. Install with: pip install matplotlib seaborn")
+
+    # Run focused hyperparameter analysis
+    if args.focus is not None or args.plot:
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            from scipy.stats import spearmanr
+
+            output_dir = Path(args.outdir)
+
+            for model_type, df in all_data.items():
+                # Determine which params to focus on
+                if args.focus is not None:
+                    focus_params = args.focus if args.focus else ['alpha', 'beta', 'lambda_ewc']
+                elif model_type in ['mob', 'continual']:
+                    focus_params = ['alpha', 'beta', 'lambda_ewc']
+                else:
+                    continue
+
+                run_focused_analysis(df, model_type, focus_params, output_dir)
+
+        except ImportError as e:
+            print(f"Focused analysis requires matplotlib, seaborn, scipy: {e}")
+            print("Install with: pip install matplotlib seaborn scipy statsmodels")
 
 
 if __name__ == '__main__':

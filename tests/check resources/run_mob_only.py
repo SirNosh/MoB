@@ -36,8 +36,9 @@ import argparse
 from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple
 
-# Add parent directory to path
+# Add parent directory and project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from mob.models import create_model
 from mob.auction import PerBatchVCGAuction
@@ -47,6 +48,9 @@ from mob.utils import set_seed
 
 # Import dataset creation (this is safe - just data loading)
 from tests.test_baselines import create_split_mnist
+
+# Resource tracking
+from resource_utils import ResourceTracker, FlopCounter, count_parameters_multi, format_results
 
 
 # =============================================================================
@@ -79,14 +83,11 @@ class MoBExpertLocal:
         use_lwf: bool = False,
         lwf_temperature: float = 2.0,
         lwf_alpha: float = 0.1,  # Weight for distillation loss (< 0.3 recommended)
-        # Bid formula: 'addition' or 'subtraction'
-        bid_formula: str = 'addition',
     ):
         self.expert_id = expert_id
         self.model = model
         self.alpha = alpha
         self.beta = beta
-        self.bid_formula = bid_formula
         self.device = device if device is not None else torch.device('cpu')
 
         self.model.to(self.device)
@@ -196,13 +197,14 @@ class MoBExpertLocal:
 
     def compute_bid(self, x: torch.Tensor, y: torch.Tensor) -> Tuple[float, Dict]:
         """
-        Compute bid for TRAINING routing.
+        Compute bid using RAW SCALED normalization.
 
-        Formula options:
-        - 'addition': bid = α × exec_cost + β × forget_cost
-          (high forget = high bid = LOSES, protects old knowledge)
-        - 'subtraction': bid = α × exec_cost - β × forget_cost
-          (high forget = low bid = WINS, routes to relevant features)
+        Forgetting cost interpretation:
+        - LOW forgetting cost = expert predicts well (small gradients) OR unrelated Fisher
+        - HIGH forgetting cost = expert predicts badly AND Fisher overlaps with gradients
+
+        Formula: bid = α × exec_cost + β × forget_cost
+        Lower bid = wins (argmin in auction)
         """
         import math
 
@@ -218,11 +220,8 @@ class MoBExpertLocal:
         log_forget = math.log1p(raw_forget)
         norm_forget = log_forget / 10.0
 
-        # Apply formula based on configuration
-        if self.bid_formula == 'subtraction':
-            bid = self.alpha * norm_exec - self.beta * norm_forget
-        else:  # 'addition' (default)
-            bid = self.alpha * norm_exec + self.beta * norm_forget
+        # ADD forgetting cost (low forget = low bid = wins)
+        bid = self.alpha * norm_exec + self.beta * norm_forget
 
         components = {
             'exec_cost': raw_exec,
@@ -231,8 +230,7 @@ class MoBExpertLocal:
             'norm_forget_cost': norm_forget,
             'bid': bid,
             'alpha': self.alpha,
-            'beta': self.beta,
-            'formula': self.bid_formula
+            'beta': self.beta
         }
         return bid, components
 
@@ -345,8 +343,6 @@ class ExpertPoolLocal:
                 use_lwf=expert_config.get('use_lwf', False),
                 lwf_temperature=expert_config.get('lwf_temperature', 2.0),
                 lwf_alpha=expert_config.get('lwf_alpha', 0.1),
-                # Bid formula
-                bid_formula=expert_config.get('bid_formula', 'addition'),
             )
             self.experts.append(expert)
 
@@ -366,17 +362,7 @@ class ExpertPoolLocal:
         return self.experts[winner_id].train_on_batch(x, y, optimizers[winner_id])
 
     def evaluate_all(self, dataloader, verbose: bool = False) -> Dict:
-        """
-        Evaluate using pseudo-label auction routing.
-
-        Uses the same bid formula as training but with pseudo-labels (model's own predictions)
-        instead of ground truth labels. This allows label-free routing at evaluation time.
-
-        Key insight: Expert that's already good at this data will have:
-        - Low exec_cost (low loss on its own predictions)
-        - Low forget_cost (small gradients = already settled on this data)
-        - Therefore LOW bid = WINS the auction
-        """
+        """Evaluate using auction-based routing (full bid = exec + forget cost)."""
         import math
         all_labels = []
         winner_preds = []
@@ -398,18 +384,20 @@ class ExpertPoolLocal:
                     logits = expert.model(x_device)
                     batch_logits.append(logits)
 
-                # Use pseudo-labels (model's own predictions) instead of ground truth
+                # Compute execution cost (loss on pseudo-labels)
                 pseudo_labels = logits.argmax(dim=-1).detach()
+                raw_exec = F.cross_entropy(logits, pseudo_labels).item()
 
-                # Compute forgetting cost with pseudo-labels
+                # Compute forgetting cost
                 forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
                 expert_forget_costs_sum[i] += forget_cost
 
-                # FORGET-COST ONLY routing: route to expert with lowest forget_cost
-                # This avoids the "confidently wrong" problem with pseudo-label exec_cost
-                # Expert with lowest forget_cost = their Fisher-protected knowledge is
-                # most aligned with this data (gradients won't hurt their memory)
-                batch_bids[i] = forget_cost
+                # Full bid: same formula as compute_bid
+                # ADD forgetting cost (low forget = low bid = wins)
+                norm_exec = raw_exec / 2.5
+                norm_forget = math.log1p(forget_cost) / 10.0
+                bid = expert.alpha * norm_exec + expert.beta * norm_forget
+                batch_bids[i] = bid
 
             # Route to expert with LOWEST bid (same as VCG auction)
             winner_id = np.argmin(batch_bids)
@@ -426,7 +414,7 @@ class ExpertPoolLocal:
         total_batches = sum(expert_selections.values())
         primary_eval_expert = max(expert_selections, key=expert_selections.get)
         avg_forget_costs = {k: v/num_batches for k, v in expert_forget_costs_sum.items()}
-
+        
         return {
             'ensemble_accuracy': accuracy,
             'expert_selections': expert_selections,
@@ -448,10 +436,18 @@ def run_experiment(train_tasks, test_tasks, config):
     """Run MoB experiment with local classes."""
 
     print("\n" + "="*70)
-    print("MoB Experiment (Isolated - won't affect baselines)")
+    print("MoB Experiment (Isolated - won't affect baselines) Resource")
     print("="*70)
 
     device = torch.device(config['device'])
+
+    # --- Resource Tracking ---
+    tracker = ResourceTracker(device)
+    tracker.start()
+    train_batch_count = 0
+    eval_batch_count = 0
+    train_sample_count = 0
+    eval_sample_count = 0
 
     # Expert configuration
     expert_config = {
@@ -466,8 +462,6 @@ def run_experiment(train_tasks, test_tasks, config):
         'use_lwf': config.get('use_lwf', False),
         'lwf_temperature': config.get('lwf_temperature', 2.0),
         'lwf_alpha': config.get('lwf_alpha', 0.1),
-        # Bid formula
-        'bid_formula': config.get('bid_formula', 'addition'),
         'dropout': 0.5
     }
 
@@ -560,6 +554,8 @@ def run_experiment(train_tasks, test_tasks, config):
 
                 global_batch_idx += 1
                 task_batch_count += 1
+                train_batch_count += 1
+                train_sample_count += x.size(0)
 
             print(f"  Epoch {epoch+1} winners: {dict(sorted(epoch_winners.items()))}")
 
@@ -593,11 +589,12 @@ def run_experiment(train_tasks, test_tasks, config):
             print(f"  [Optimizer Reset] Reset optimizers for experts: {winning_experts}")
         # =====================================================================
 
-        # Evaluate current task using the PRIMARY expert (not routing)
+        # Evaluate current task using the ASSIGNED expert (task-aware training accuracy)
         primary = max(winners_this_task, key=winners_this_task.get) if winners_this_task else 0
         expert = pool.experts[primary]
         expert.model.eval()
-        correct, total = 0, 0
+        correct = 0
+        total = 0
         with torch.no_grad():
             for x_eval, y_eval in test_tasks[task_id]:
                 x_eval = x_eval.to(device)
@@ -609,6 +606,10 @@ def run_experiment(train_tasks, test_tasks, config):
         task_accuracies.append(task_acc)
         print(f"  Task {task_id+1} accuracy: {task_acc:.4f} (Expert {primary})")
 
+    # --- Snapshot: training complete ---
+    tracker.snapshot("train_end", num_samples=train_sample_count)
+    tracker.reset_peak()
+
     # =========================================================================
     # FINAL EVALUATION
     # =========================================================================
@@ -616,31 +617,15 @@ def run_experiment(train_tasks, test_tasks, config):
     print("FINAL EVALUATION")
     print("="*70)
 
-    # First, show individual expert accuracies on each task (diagnostic)
-    print("\n  Individual Expert Accuracies (no routing):")
-    print("  " + "-"*60)
-    for task_id, test_loader in enumerate(test_tasks):
-        accs = []
-        for expert in pool.experts:
-            expert.model.eval()
-            correct, total = 0, 0
-            with torch.no_grad():
-                for x, y in test_loader:
-                    x, y = x.to(device), y.to(device)
-                    preds = expert.model(x).argmax(dim=-1)
-                    correct += (preds == y).sum().item()
-                    total += y.size(0)
-            accs.append(correct / total if total > 0 else 0.0)
-        acc_str = " | ".join([f"E{i}:{a:.2%}" for i, a in enumerate(accs)])
-        trained_by = expert_task_wins.get(task_id, "?")
-        print(f"  Task {task_id+1} (digits {task_id*2},{task_id*2+1}): {acc_str}  [Trained: E{trained_by}]")
-    print("  " + "-"*60)
-    print("\n  Ensemble Accuracy (with pseudo-label routing):")
-
     for task_id, test_loader in enumerate(test_tasks):
         results = pool.evaluate_all(test_loader)
         acc = results['ensemble_accuracy']
         final_accuracies.append(acc)
+
+        # Count eval batches/samples
+        for x_eval, _ in test_loader:
+            eval_batch_count += 1
+            eval_sample_count += x_eval.size(0)
 
         trained_expert = expert_task_wins.get(task_id, "?")
         eval_expert = results['primary_eval_expert']
@@ -662,12 +647,45 @@ def run_experiment(train_tasks, test_tasks, config):
     ]
     avg_forgetting = np.mean(forgetting_per_task) if forgetting_per_task else 0.0
 
+    # --- Snapshot: eval complete ---
+    tracker.snapshot("eval_end", num_samples=eval_sample_count)
+    tracker_results = tracker.stop()
+
+    # --- FLOPs estimation ---
+    sample_input = torch.randn(1, 1, 28, 28).to(device)
+    # Use the first expert's model for FLOPs (all experts share same architecture)
+    flop_results = FlopCounter.estimate_total_flops(
+        pool.experts[0].model, sample_input,
+        num_train_batches=train_batch_count,
+        num_eval_batches=eval_batch_count
+    )
+
+    # --- Parameter counts ---
+    expert_models = [e.model for e in pool.experts]
+    param_counts = count_parameters_multi(expert_models)
+
+    # --- Format resource results ---
+    resource_results = format_results(
+        model_name="MoB-TaskAware",
+        tracker_results=tracker_results,
+        flop_results=flop_results,
+        param_counts=param_counts,
+        accuracy=avg_accuracy,
+        forgetting=avg_forgetting,
+        task_accuracies=task_accuracies,
+        final_accuracies=final_accuracies
+    )
+
     print(f"\n{'='*70}")
     print("SUMMARY")
     print(f"{'='*70}")
     print(f"  Average Accuracy: {avg_accuracy:.4f}")
     print(f"  Average Forgetting: {avg_forgetting:.4f}")
     print(f"  Tasks retained (>50%): {sum(1 for a in final_accuracies if a > 0.5)}/{len(final_accuracies)}")
+    print(f"  Train Time: {resource_results['train_time_s']:.2f}s")
+    print(f"  Train VRAM Peak: {resource_results['train_vram_peak_mb']:.1f} MB")
+    print(f"  Train FLOPs: {resource_results['train_flops']:.2e}")
+    print(f"  Total Params: {param_counts['total_params']:,}")
 
     return {
         'task_accuracies': task_accuracies,
@@ -675,7 +693,8 @@ def run_experiment(train_tasks, test_tasks, config):
         'avg_accuracy': avg_accuracy,
         'forgetting': avg_forgetting,
         'expert_task_wins': expert_task_wins,
-        'bid_logger': bid_logger
+        'bid_logger': bid_logger,
+        'resource_metrics': resource_results
     }
 
 
@@ -686,11 +705,11 @@ def main():
     parser.add_argument('--num_experts', type=int, default=4)
     parser.add_argument('--alpha', type=float, default=0.5)
     parser.add_argument('--beta', type=float, default=0.5)
-    parser.add_argument('--lambda_ewc', type=float, default=1000.0)
+    parser.add_argument('--lambda_ewc', type=float, default=1000)
     parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=4)
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--forgetting_cost_scale', type=float, default=1.0)
+    parser.add_argument('--forgetting_cost_scale', type=float, default=1)
 
     # LwF (Learning without Forgetting) arguments
     parser.add_argument('--use_lwf', action='store_true',
@@ -699,8 +718,6 @@ def main():
                         help='Temperature for LwF soft targets (default: 2.0)')
     parser.add_argument('--lwf_alpha', type=float, default=0.1,
                         help='Weight for LwF distillation loss (recommended < 0.3)')
-    parser.add_argument('--formula', type=str, default='addition', choices=['addition', 'subtraction'],
-                        help='Bid formula: addition (default) or subtraction')
     parser.add_argument('--save_bids', action='store_true')
     parser.add_argument('--reset_optimizer', action='store_true',
                         help='Reset optimizer when expert switches tasks or is idle too long')
@@ -726,8 +743,6 @@ def main():
         'use_lwf': args.use_lwf,
         'lwf_temperature': args.lwf_temperature,
         'lwf_alpha': args.lwf_alpha,
-        # Bid formula
-        'bid_formula': args.formula,
         # Optimizer reset
         'reset_optimizer': args.reset_optimizer,
         'idle_threshold': args.idle_threshold,
@@ -750,12 +765,11 @@ def main():
     os.makedirs('results', exist_ok=True)
 
     if args.save_bids and 'bid_logger' in results:
-        # Save first, then print diagnostics (in case print crashes on unicode)
-        results['bid_logger'].save_logs(f"results/mob_bids_seed_{args.seed}.json")
         print("\n" + "="*70)
         print("BID DIAGNOSTICS")
         print("="*70)
         results['bid_logger'].print_diagnostics()
+        results['bid_logger'].save_logs(f"results/mob_bids_seed_{args.seed}.json")
 
     summary = {
         'seed': args.seed,
@@ -768,7 +782,7 @@ def main():
     }
     with open(f"results/mob_results_seed_{args.seed}.json", 'w') as f:
         json.dump(summary, f, indent=2)
-    print(f"\n[OK] Results saved to: results/mob_results_seed_{args.seed}.json")
+    print(f"\n✓ Results saved to: results/mob_results_seed_{args.seed}.json")
 
 
 if __name__ == '__main__':

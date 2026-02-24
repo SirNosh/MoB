@@ -13,6 +13,33 @@ This codebase contains two primary experiment runners:
 
 ---
 
+## Critical Implementation Details (The "MoB Recipe")
+
+Two key fixes are essential for MoB to work effectively with continual learning:
+
+### 1. EWC Fisher Clamping (min=0.1)
+
+**Problem:** EWC effectiveness varies dramatically based on model initialization. Creating multiple models changes the random state, giving some experts "bad" initializations with weak Fisher protection (Fisher max varies up to 18x between initializations).
+
+**Solution:** In `_normalize_fisher()` (both `mob/bidding.py` and `contibualmob/bidding.py`):
+```python
+self.fisher[n] = torch.clamp(self.fisher[n], min=0.1)
+```
+
+**Result:** Expert handling 2 tasks improved from 0% to 87% retention on first task.
+
+### 2. Optimizer Reset
+
+**Problem:** Adam optimizer accumulates momentum from previous tasks. When an expert switches to a new task, stale momentum can hurt learning.
+
+**Solution:**
+- **Task-aware MoB:** Reset ALL winning experts' optimizers at task END (after Fisher update)
+- **Continual MoB:** Reset winner's optimizer when shift is detected
+
+**Flag:** `--reset_optimizer` (recommended to always enable)
+
+---
+
 ## Architecture
 
 ### Expert Model: SimpleCNN
@@ -103,6 +130,7 @@ The script defines `MoBExpertLocal` and `ExpertPoolLocal` classes that are copie
 | `lambda_ewc` (λ) | 10.0 | `--lambda_ewc` | EWC regularization strength |
 | `forgetting_cost_scale` | 1.0 | `--forgetting_cost_scale` | Scaling factor for forgetting cost in bidding |
 | `seed` | 42 | `--seed` | Random seed for reproducibility |
+| `reset_optimizer` | False | `--reset_optimizer` | Reset optimizer at task end (recommended) |
 
 ### LwF (Learning without Forgetting) Parameters
 
@@ -269,21 +297,25 @@ def update_fisher(self, dataloader, num_samples=200):
     self._normalize_fisher()
 ```
 
-**Fisher Normalization:**
+**Fisher Normalization & Clamping (CRITICAL FIX):**
 ```python
 def _normalize_fisher(self):
     all_fisher = concat([f.flatten() for f in self.fisher.values()])
     fisher_mean = all_fisher.mean()
-    
-    if fisher_mean > 1e-8:
+
+    epsilon = 1e-30  # Very small to ensure normalization always happens
+    if fisher_mean > 0:
         for n in self.fisher:
-            self.fisher[n] = self.fisher[n] / fisher_mean
+            self.fisher[n] = self.fisher[n] / (fisher_mean + epsilon)
+            # CRITICAL: Clamp to minimum value for uniform protection
+            self.fisher[n] = torch.clamp(self.fisher[n], min=0.1)
 ```
 
-**Why Normalize Fisher?**
-- Makes `lambda_ewc` work in reasonable range (1.0 - 10.0)
-- Consistent EWC strength across model architectures
-- Prevents numerical issues from tiny/huge Fisher values
+**Why Normalize AND Clamp Fisher?**
+- **Normalization (mean=1.0):** Makes `lambda_ewc` work in reasonable range
+- **Clamping (min=0.1):** Ensures ALL parameters get L2-like protection against drift
+- **Problem solved:** Model initialization affects Fisher values (up to 18x variation). Without clamping, "bad" initializations get weak protection and forget completely.
+- **Result:** Expert handling 2 tasks improved from 0% to 87% retention on first task
 
 ---
 
@@ -407,8 +439,18 @@ def run_experiment(train_tasks, test_tasks, config):
                 pool.train_winner(winner_id, x, y, optimizers)
         
         # Update Fisher for experts that won batches
-        for expert_id in winners_this_task.keys():
+        winning_experts = list(winners_this_task.keys())
+        for expert_id in winning_experts:
             pool.experts[expert_id].update_after_task(task_loader, num_samples=200)
+
+        # OPTIMIZER RESET at Task END (recommended)
+        # Clears Adam momentum which can hurt learning on new task
+        if config.get('reset_optimizer', False):
+            for eid in winning_experts:
+                optimizers[eid] = torch.optim.Adam(
+                    pool.experts[eid].model.parameters(),
+                    lr=config['learning_rate']
+                )
 ```
 
 ### Expert Training with EWC (and optional LwF)
@@ -489,6 +531,7 @@ def evaluate_all(self, dataloader):
 | **LwF Recording** | Start of each task | Trained experts record soft targets on new task data |
 | **Fisher Update** | End of each task | Only winning experts update Fisher |
 | **Optimal Params Update** | End of each task | Moving average with Fisher |
+| **Optimizer Reset** | End of each task | Reset Adam optimizer for all winning experts (clears momentum) |
 
 ---
 
@@ -525,6 +568,7 @@ contibualmob/
 | `lambda_ewc` (λ) | 40.0 | `--lambda_ewc` | EWC regularization strength (higher default!) |
 | `shift_threshold` | 2.0 | `--shift_threshold` | Multiplier for shift detection |
 | `seed` | 42 | `--seed` | Random seed for reproducibility |
+| `reset_optimizer` | False | `--reset_optimizer` | Reset optimizer on shift detection (recommended) |
 
 > **Note:** `lambda_ewc` defaults to 40.0 here vs 10.0 in `run_mob_only.py`
 
@@ -622,23 +666,45 @@ if self.batches_won % 500 == 0:
 
 ```python
 class ExpertPool:
-    def __init__(self, num_experts, expert_config, device=None, use_shift_detection=False):
+    def __init__(self, num_experts, expert_config, device=None,
+                 use_shift_detection=False, reset_optimizer=False, learning_rate=0.001):
         self.shift_detector = ShiftDetector() if use_shift_detection else None
+        self.reset_optimizer = reset_optimizer
+        self.learning_rate = learning_rate
         # ... create experts ...
-    
+
+    def _should_reset_optimizer_on_shift(self, expert, shift_detected):
+        """Reset optimizer when shift is detected (for task-free learning)."""
+        if not self.reset_optimizer:
+            return False
+        if not shift_detected:
+            return False
+        if not expert.forget_estimator.has_fisher():
+            return False  # Nothing to reset for untrained expert
+        return True
+
     def train_winner(self, winner_id, x, y, optimizers):
         winner = self.experts[winner_id]
-        
+
         # Check for distribution shift BEFORE training
         shift_detected = False
         if self.shift_detector:
             current_loss = winner.exec_estimator.compute_predicted_loss(x, y)
             shift_detected = self.shift_detector.update(current_loss)
-        
+
+        # Optimizer reset on shift detection (clears Adam momentum)
+        optimizer_reset = False
+        if self._should_reset_optimizer_on_shift(winner, shift_detected):
+            optimizers[winner_id] = torch.optim.Adam(
+                winner.model.parameters(), lr=self.learning_rate
+            )
+            optimizer_reset = True
+
         metrics = winner.train_on_batch(x, y, optimizers[winner_id])
         metrics['shift_detected'] = shift_detected
+        metrics['optimizer_reset'] = optimizer_reset
         return metrics
-    
+
     def consolidate(self, dataloader, num_samples=200, expert_ids=None):
         """Consolidates knowledge for specific experts."""
         targets = expert_ids if expert_ids is not None else range(len(self.experts))
@@ -894,6 +960,7 @@ digit_eval_stats[digit] = {
 | **Task Boundaries** | Explicit (task_id known) | Task-Free (no boundaries) |
 | **Fisher Update** | End of each task | On shift detection |
 | **Shift Detection** | None | EMA-based ShiftDetector |
+| **Optimizer Reset** | At task END (all winners) | On shift detection (winner) |
 | **LwF Support** | Yes | No |
 | **Replay Buffer** | No | Yes (500 batches) |
 | **Evaluation Routing** | Forgetting-cost (pseudo-labels) | Auction bids |

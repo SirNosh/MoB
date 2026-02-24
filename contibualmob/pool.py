@@ -75,7 +75,10 @@ class ExpertPool:
         num_experts: int,
         expert_config: Dict,
         device: Optional[torch.device] = None,
-        use_shift_detection: bool = False
+        use_shift_detection: bool = False,
+        reset_optimizer: bool = False,
+        idle_threshold: int = 100,
+        learning_rate: float = 0.001
     ):
         """
         Initialize the expert pool.
@@ -84,9 +87,18 @@ class ExpertPool:
         self.expert_config = expert_config
         self.device = device if device is not None else torch.device('cpu')
         self.experts: List[MoBExpert] = []
-        
+
         # Shift Detection
         self.shift_detector = ShiftDetector() if use_shift_detection else None
+
+        # =====================================================================
+        # Optimizer Reset Configuration (for idle-based reset in continual learning)
+        # =====================================================================
+        self.reset_optimizer = reset_optimizer
+        self.idle_threshold = idle_threshold
+        self.learning_rate = learning_rate
+        self.global_batch_idx = 0  # Track global batch index
+        # =====================================================================
 
         # Create experts
         for i in range(num_experts):
@@ -134,6 +146,29 @@ class ExpertPool:
             components.append(comp)
         return bids, components
 
+    def _should_reset_optimizer_on_shift(self, expert, shift_detected: bool) -> bool:
+        """
+        Check if expert's optimizer should be reset based on shift detection.
+
+        For continual learning, we reset when:
+        1. reset_optimizer is enabled AND
+        2. A distribution shift was detected AND
+        3. Expert has trained before (has Fisher - nothing to reset otherwise)
+
+        This provides a natural "task boundary" signal in task-free learning.
+        """
+        if not self.reset_optimizer:
+            return False
+
+        if not shift_detected:
+            return False
+
+        # Never reset if expert hasn't trained yet
+        if not expert.forget_estimator.has_fisher():
+            return False
+
+        return True
+
     def train_winner(
         self,
         winner_id: int,
@@ -145,7 +180,7 @@ class ExpertPool:
         Train the winning expert on the batch.
         """
         winner = self.experts[winner_id]
-        
+
         # Check for distribution shift BEFORE training
         shift_detected = False
         if self.shift_detector:
@@ -156,8 +191,30 @@ class ExpertPool:
                 current_loss = winner.exec_estimator.compute_predicted_loss(x, y)
             shift_detected = self.shift_detector.update(current_loss)
 
+        # =====================================================================
+        # Optimizer Reset on Shift Detection
+        # Key insight: Reset optimizer when distribution shift is detected.
+        # This provides a natural "task boundary" signal in task-free learning.
+        # =====================================================================
+        optimizer_reset = False
+        if self._should_reset_optimizer_on_shift(winner, shift_detected):
+            # Reset optimizer for this expert
+            optimizers[winner_id] = torch.optim.Adam(
+                winner.model.parameters(),
+                lr=self.learning_rate
+            )
+            print(f"  [Optimizer Reset] Expert {winner_id} optimizer reset (shift detected)")
+            optimizer_reset = True
+        # =====================================================================
+
         metrics = winner.train_on_batch(x, y, optimizers[winner_id])
         metrics['shift_detected'] = shift_detected
+        metrics['optimizer_reset'] = optimizer_reset
+
+        # Update tracking for optimizer reset logic
+        winner.last_won_global_batch = self.global_batch_idx
+        self.global_batch_idx += 1
+
         return metrics
 
     def consolidate(
@@ -183,17 +240,18 @@ class ExpertPool:
         dataloader: torch.utils.data.DataLoader
     ) -> Dict:
         """
-        Evaluates the MoB system using confidence-based expert routing.
-        
+        Evaluates the MoB system using pseudo-label auction routing.
+
         IMPORTANT: This method does NOT use ground truth labels for routing.
-        Instead, it selects the expert with highest prediction confidence
-        (maximum softmax probability), which is the standard, fair approach
-        for MoE evaluation in continual learning research.
-        
-        Reference: This follows the evaluation protocol from:
-        - Aljundi et al. (2017) "Expert Gate"
-        - Rusu et al. (2016) "Progressive Neural Networks"
+        Instead, it uses pseudo-labels (model's own predictions) to compute
+        bids, then routes to the expert with lowest bid.
+
+        Key insight: Expert that's already good at this data will have:
+        - Low exec_cost (low loss on its own predictions)
+        - Low forget_cost (small gradients = already settled on this data)
+        - Therefore LOW bid = WINS the auction
         """
+        import math
         results = {}
         all_labels = []
         winner_preds = []
@@ -213,34 +271,45 @@ class ExpertPool:
             accuracy = correct / total if total > 0 else 0.0
             results[f'expert_{i}_accuracy'] = accuracy
 
-        # 2. Calculate MoB accuracy using CONFIDENCE-BASED routing (no labels!)
+        # 2. Calculate MoB accuracy using PSEUDO-LABEL AUCTION routing (no ground truth labels!)
         for x, y in dataloader:
             x_device = x.to(self.device)
             y_device = y.to(self.device)
             all_labels.append(y_device.cpu())
 
-            batch_confidences = np.zeros(self.num_experts)
+            batch_bids = np.zeros(self.num_experts)
             batch_logits = []
-            
-            # 1. Compute logits for all experts (needed for predictions)
-            for expert in self.experts:
+
+            # Compute logits and bids for all experts using pseudo-labels
+            for i, expert in enumerate(self.experts):
                 expert.model.eval()
                 with torch.no_grad():
-                     batch_logits.append(expert.model(x_device))
+                    logits = expert.model(x_device)
+                    batch_logits.append(logits)
 
-            # 2. Determine winner using MoB AUCTION logic
-            # Use 'collect_bids' to get the Bids (Cost) for each expert
-            bids, _ = self.collect_bids(x, y) 
-            
-            # 3. Select Winner: Lowest Bid = Lowest Cost = Winner
-            # (Previously we used argmax confidence, which favored overconfident experts on OOD data)
-            auction_winner_id = np.argmin(bids)
-            
+                # Use pseudo-labels (model's own predictions) instead of ground truth
+                pseudo_labels = logits.argmax(dim=-1).detach()
+
+                # Compute execution cost with pseudo-labels
+                raw_exec = F.cross_entropy(logits, pseudo_labels).item()
+
+                # Compute forgetting cost with pseudo-labels
+                forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
+
+                # Same bid formula as training
+                norm_exec = raw_exec / 2.5
+                norm_forget = math.log1p(forget_cost) / 10.0
+                bid = expert.alpha * norm_exec + expert.beta * norm_forget
+                batch_bids[i] = bid
+
+            # Select Winner: Lowest Bid = WINS the auction
+            auction_winner_id = np.argmin(batch_bids)
+
             # DEBUG-LOG: Print evaluation decision occasionally
-            if len(all_labels) == 1: # Print only for FIRST batch of each evaluation call
-                print(f"[EVAL DEBUG] Batch 0: Bids(Costs)={np.round(bids, 4)}")
-                print(f"             Winner={auction_winner_id} (Min Bid) | Labels={y_device[:5].cpu().tolist()}")
-            
+            if len(all_labels) == 1:  # Print only for FIRST batch of each evaluation call
+                print(f"[EVAL DEBUG] Batch 0: Bids={np.round(batch_bids, 4)}")
+                print(f"             Winner={auction_winner_id} (Min Bid)")
+
             # Get the winning expert's predictions for this batch
             winning_logits = batch_logits[auction_winner_id]
             winning_preds_batch = winning_logits.argmax(dim=-1).cpu()
@@ -250,9 +319,8 @@ class ExpertPool:
         if all_labels:
             all_labels = torch.cat(all_labels)
             winner_preds = torch.cat(winner_preds)
-            
+
             # Calculate the final accuracy based on the winners' predictions
-            # The key 'ensemble_accuracy' is kept for consistency with the benchmark script
             ensemble_accuracy = (winner_preds == all_labels).float().mean().item()
             results['ensemble_accuracy'] = ensemble_accuracy
         else:

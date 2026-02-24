@@ -20,8 +20,9 @@ from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 
-# Add parent directory to path
+# Add parent directory and project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 # IMPORT FROM contibualmob (The new environment)
 from contibualmob.pool import ExpertPool
@@ -32,6 +33,9 @@ from contibualmob.utils import set_seed
 # Import dataset creation (safe to reuse)
 from tests.test_baselines import create_split_mnist
 
+# Resource tracking
+from resource_utils import ResourceTracker, FlopCounter, count_parameters_multi, format_results
+
 
 def run_continual_experiment(train_tasks, test_tasks, config):
     print("\n" + "="*70)
@@ -39,6 +43,14 @@ def run_continual_experiment(train_tasks, test_tasks, config):
     print("="*70)
 
     device = torch.device(config['device'])
+
+    # --- Resource Tracking ---
+    tracker = ResourceTracker(device)
+    tracker.start()
+    train_batch_count = 0
+    train_sample_count = 0
+    eval_batch_count = 0
+    eval_sample_count = 0
 
     # Expert configuration
     expert_config = {
@@ -150,6 +162,8 @@ def run_continual_experiment(train_tasks, test_tasks, config):
                 online_digit_stats[winner_id][digit]['correct'] += 1
 
         # 4. Training Phase
+        train_batch_count += 1
+        train_sample_count += x.size(0)
         metrics = pool.train_winner(winner_id, x, y, optimizers)
 
         # 5. Shift Detection & Consolidation
@@ -176,6 +190,10 @@ def run_continual_experiment(train_tasks, test_tasks, config):
 
             replay_buffer = []
 
+    # --- Snapshot: training complete ---
+    tracker.snapshot("train_end", num_samples=train_sample_count)
+    tracker.reset_peak()
+
     # =========================================================================
     # FINAL EVALUATION (DIGIT-BOUND)
     # =========================================================================
@@ -194,6 +212,8 @@ def run_continual_experiment(train_tasks, test_tasks, config):
     
     print("Running Auction-Based Evaluation on Test Set...")
     for x, y in tqdm(test_loader, desc="Evaluating"):
+        eval_batch_count += 1
+        eval_sample_count += x.size(0)
         x, y = x.to(device), y.to(device)
         
         # 1. Auction Routing
@@ -256,20 +276,65 @@ def run_continual_experiment(train_tasks, test_tasks, config):
 
     final_avg = (overall_correct / overall_total) * 100 if overall_total > 0 else 0.0
     print(f"\nOverall Average Accuracy: {final_avg:.2f}%")
-    
-    # Save Summary
-    with open(f"results/continual_mob_summary_{config['seed']}.txt", "w") as f:
+
+    # --- Snapshot: eval complete ---
+    tracker.snapshot("eval_end", num_samples=eval_sample_count)
+    tracker_results = tracker.stop()
+
+    # --- FLOPs estimation ---
+    sample_input = torch.randn(1, 1, 28, 28).to(device)
+    flop_results = FlopCounter.estimate_total_flops(
+        pool.experts[0].model, sample_input,
+        num_train_batches=train_batch_count,
+        num_eval_batches=eval_batch_count
+    )
+
+    # --- Parameter counts ---
+    expert_models = [e.model for e in pool.experts]
+    param_counts = count_parameters_multi(expert_models)
+
+    # --- Compute per-task accuracies from digit-level stats ---
+    final_accuracies = []
+    for task_id in range(config['num_tasks']):
+        d1, d2 = task_id * 2, task_id * 2 + 1
+        correct = digit_eval_stats[d1]['correct'] + digit_eval_stats[d2]['correct']
+        total = digit_eval_stats[d1]['total'] + digit_eval_stats[d2]['total']
+        task_acc = correct / total if total > 0 else 0.0
+        final_accuracies.append(task_acc)
+
+    # --- Format resource results ---
+    resource_results = format_results(
+        model_name="MoB-Online",
+        tracker_results=tracker_results,
+        flop_results=flop_results,
+        param_counts=param_counts,
+        accuracy=final_avg / 100.0,
+        forgetting=0.0,
+        task_accuracies=final_accuracies,
+        final_accuracies=final_accuracies
+    )
+
+    print(f"  Train Time: {resource_results['train_time_s']:.2f}s")
+    print(f"  Train VRAM Peak: {resource_results['train_vram_peak_mb']:.1f} MB")
+    print(f"  Train FLOPs: {resource_results['train_flops']:.2e}")
+    print(f"  Total Params: {param_counts['total_params']:,}")
+
+    # Save Summary (use absolute path so it works regardless of CWD)
+    _results_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'results')
+    os.makedirs(_results_dir, exist_ok=True)
+    with open(os.path.join(_results_dir, f"continual_mob_summary_{config['seed']}.txt"), "w") as f:
         f.write(f"Avg Accuracy: {final_avg:.4f}\n")
         f.write(f"Detected Shifts: {detected_shifts}\n")
-        
+
     results = {
         'avg_accuracy': final_avg,
         'detected_shifts': detected_shifts,
         'digit_eval_stats': digit_eval_stats,
         'online_digit_stats': online_digit_stats,
-        'bid_logger': bid_logger
+        'bid_logger': bid_logger,
+        'resource_metrics': resource_results
     }
-        
+
     return results
 
 def main():
