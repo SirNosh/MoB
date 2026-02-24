@@ -697,7 +697,7 @@ MoB Final/
 │   ├── bid_diagnostics.py        # BidLogger for analysis
 │   └── utils.py                  # Utilities (set_seed, etc.)
 │
-├── contibualmob/                  # Online/Continual MoB module
+├── contibualmob/                  # Online/Continual MoB module # I know its supposed to be continual mob, its a typo and I like it
 │   ├── __init__.py
 │   ├── models.py                 # Same architectures as mob/
 │   ├── bidding.py                # Same bidding logic with Fisher clamping
