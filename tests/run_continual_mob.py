@@ -287,6 +287,8 @@ def main():
                         help='Reset optimizer when expert is idle too long')
     parser.add_argument('--idle_threshold', type=int, default=100,
                         help='Batches of inactivity before optimizer reset (default: 100)')
+    parser.add_argument('--forgetting_cost_scale', type=float, default=1.0,
+                        help='Scale for forgetting cost in bid computation')
 
     args = parser.parse_args()
     set_seed(args.seed)
@@ -304,7 +306,8 @@ def main():
         'epochs_per_task': args.epochs,
         'shift_threshold': args.shift_threshold,
         'reset_optimizer': args.reset_optimizer,
-        'idle_threshold': args.idle_threshold
+        'idle_threshold': args.idle_threshold,
+        'forgetting_cost_scale': args.forgetting_cost_scale
     }
 
     print("Creating datasets...")

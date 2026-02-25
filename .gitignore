@@ -1,8 +1,7 @@
 .vscode/
 .claude/
-results/
-*.png
-*.json
 __pycache__/
 tests/check resources/data/
 tests/check resources/__pycache__/
+data/MNIST/
+.cursor/

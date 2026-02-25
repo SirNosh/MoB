@@ -381,7 +381,7 @@ class ShiftDetector:
         return is_shift
 ```
 
-**Note**: Online MoB hyperparameters have not yet been optimized. Current results may not reflect the method's full potential.
+**Note**: With optimized hyperparameters (λ_ewc=971.27, shift_threshold=2.58), Online MoB achieves **90.22% accuracy**, outperforming Task-Aware MoB (79.03%). See Training Configuration Details for full parameters.
 
 ### Evaluation Routing
 
@@ -405,6 +405,8 @@ def evaluate_all(self, dataloader):
 ```
 
 **Key insight**: The expert whose Fisher information is most aligned with the input will have the lowest forgetting cost, naturally routing data to the correct specialist.
+
+**Note on evaluation reproducibility**: The test DataLoader uses `shuffle=True`, so batch ordering varies between iterations. The main `tests/run_mob_only.py` includes an "Individual Expert Accuracies" diagnostic that iterates test data before ensemble evaluation, while `tests/check resources/run_mob_only.py` only performs ensemble evaluation. This extra iteration changes the random state, causing slightly different routing decisions (~78% vs ~79% accuracy with identical training).
 
 ---
 
@@ -559,14 +561,12 @@ All results from `benchmark_results.json`. Experiments conducted with:
 | Method | Avg Accuracy | Avg Forgetting | Total Params | Trainable Params |
 |--------|-------------|----------------|--------------|------------------|
 | **Experience Replay** | **97.48%** | **2.71%** | 1,682,954 | 1,682,954 |
-| **MoB-TaskAware** | 76.61% | 24.72% | 1,686,568 | 1,686,568 |
+| **MoB-TaskAware** | 79.03% | 20.72% | 1,686,568 | 1,686,568 |
 | **A-GEM** | 75.68% | 30.24% | 1,682,954 | 1,682,954 |
 | **PNN**† | 73.58% | 0.00% | 6,135,642 | 2,032,532 |
-| **MoB-Online*** | 59.53% | 0.00% | 1,686,568 | 1,686,568 |
+| **MoB-Online** | 90.22% | 0.00% | 1,686,568 | 1,686,568 |
 | **Monolithic+EWC** | 37.34% | 68.14% | 1,682,954 | 1,682,954 |
 | **GatedMoE+EWC** | 19.86% | 0.00% | 2,090,540 | 2,090,540 |
-
-\* **Note**: Online MoB hyperparameters have not been optimized. The 59.53% accuracy reflects default settings and should improve significantly with tuning.
 
 † **PNN Evaluation Modes**:
 - **Task-Agnostic (73.58%)**: Fair comparison with MoB - uses confidence-based routing without knowing which task is being evaluated. Column selections: `{0: 2012, 1: 1069, 2: 2964, 3: 3004, 4: 951}`
@@ -581,7 +581,7 @@ This table shows the accuracy achieved immediately after training each task (Tra
 | Method | Task 1 | Task 2 | Task 3 | Task 4 | Task 5 |
 |--------|--------|--------|--------|--------|--------|
 | **ER** | 99.91% | 99.76% | 99.95% | 99.55% | 99.09% |
-| **MoB-TaskAware** | 99.91% | 99.07% | 99.95% | 99.90% | 93.70% |
+| **MoB-TaskAware** | 99.91% | 98.97% | 99.95% | 99.90% | 86.43% |
 | **A-GEM** | 99.95% | 100.0% | 100.0% | 99.95% | 99.45% |
 | **PNN** | 99.91% | 99.66% | 100.0% | 100.0% | 99.65% |
 | **MoB-Online** | 99.86% | 0.00% | 99.95% | 99.09% | 0.00% |
@@ -593,7 +593,7 @@ This table shows the accuracy achieved immediately after training each task (Tra
 | Method | Task 1 | Task 2 | Task 3 | Task 4 | Task 5 | Δ Task 1 |
 |--------|--------|--------|--------|--------|--------|----------|
 | **ER** | 98.72% | 96.87% | 95.84% | 96.88% | 99.09% | -1.19% |
-| **MoB-TaskAware** | 99.91% | 1.91% | 98.24% | 99.90% | 83.11% | +0.00% |
+| **MoB-TaskAware** | 99.91% | 26.44% | 89.70% | 99.80% | 79.32% | +0.00% |
 | **A-GEM** | 79.57% | 71.65% | 62.11% | 65.61% | 99.45% | -20.38% |
 | **PNN** | 99.91% | 99.66% | 100.0% | 100.0% | 99.65% | +0.00% |
 | **MoB-Online** | 99.86% | 0.00% | 99.95% | 99.09% | 0.00% | +0.00% |
@@ -602,11 +602,28 @@ This table shows the accuracy achieved immediately after training each task (Tra
 
 **Key observations from per-task data:**
 - **ER maintains uniformly high accuracy** across all tasks (95-99%), with minimal per-task forgetting
-- **MoB-TaskAware retains Task 1 perfectly** (99.91%) but catastrophically forgets Task 2 (99.07% → 1.91%)
+- **MoB-TaskAware retains Task 1 perfectly** (99.91%) but significantly forgets Task 2 (98.97% → 26.44%)
 - **A-GEM shows backward interference** - earlier tasks degrade as later tasks are learned (Task 1: 99.95% → 79.57%)
 - **PNN achieves perfect retention** by freezing previous columns (all training = final)
 - **Monolithic+EWC exhibits severe forgetting** on middle tasks (Tasks 2-4 drop to 0%)
 - **Gated MoE never properly learns** Tasks 2-5, demonstrating catastrophic gater forgetting
+
+**MoB-Online Per-Digit Accuracies (with optimized hyperparameters):**
+
+| Digit | Accuracy | Routing |
+|-------|----------|---------|
+| 0 | 99.90% | Expert 3 (979), Expert 1 (1) |
+| 1 | 99.74% | Expert 3 (1133), Expert 1 (2) |
+| 2 | 86.72% | Expert 1 (1032) |
+| 3 | 93.96% | Expert 1 (1010) |
+| 4 | 98.88% | Expert 2 (971), Expert 1 (11) |
+| 5 | 99.10% | Expert 2 (885), Expert 1 (7) |
+| 6 | 98.54% | Expert 0 (945), Expert 1 (13) |
+| 7 | 97.76% | Expert 0 (1007), Expert 1 (21) |
+| 8 | 39.43% | Expert 1 (974) |
+| 9 | 87.12% | Expert 1 (1009) |
+
+**Key insight**: MoB-Online achieves excellent routing for 8/10 digits. Digit 8 shows the main weakness (39.43%) where Expert 1 handles it but was primarily trained on digits 2-3. Despite this, the overall 90.22% accuracy demonstrates effective automatic shift detection without explicit task boundaries.
 
 ### Complete Resource Usage
 
@@ -660,7 +677,7 @@ This table shows the accuracy achieved immediately after training each task (Tra
 | Method | Forgetting Metric | Forgetting Pattern |
 |--------|-------------------|-------------------|
 | **ER** | 2.71% | Uniform mild degradation across all tasks |
-| **MoB-TaskAware** | 24.72% | Severe on Task 2 only; others near-perfect |
+| **MoB-TaskAware** | 20.72% | Significant on Task 2; Tasks 1,4 near-perfect; Task 3 moderate |
 | **A-GEM** | 30.24% | Gradual backward transfer (earlier tasks hurt more) |
 | **PNN** | 0.00% | Zero forgetting (frozen columns) |
 | **MoB-Online** | 0.00% | Failed to learn Tasks 2, 5 (not forgetting, but not learning) |
@@ -676,7 +693,7 @@ The benchmark used optimized hyperparameters from Optuna-based Bayesian search:
 | Method | Key Hyperparameters |
 |--------|---------------------|
 | **MoB-TaskAware** | α=0.3549, β=0.4151, λ_ewc=277.54, lr=0.001028, forgetting_scale=2.1314, reset_optimizer=True |
-| **MoB-Online** | α=0.5966, β=0.6606, λ_ewc=112.16, lr=0.006971, shift_threshold=4.05, reset_optimizer=True |
+| **MoB-Online** | α=0.5278, β=0.6333, λ_ewc=971.27, lr=0.000683, shift_threshold=2.58, forgetting_scale=0.7949, reset_optimizer=True |
 | **GatedMoE+EWC** | λ_ewc=5924.15, lr=0.000219, gater_hidden=512, gater_ewc=False |
 | **Monolithic+EWC** | λ_ewc=1791.93, lr=0.000707, width_multiplier=2 |
 | **A-GEM** | memory_size=1024, memory_batch=64, lr=0.000102, width_multiplier=2 |
@@ -687,7 +704,7 @@ The benchmark used optimized hyperparameters from Optuna-based Bayesian search:
 
 1. **Experience Replay achieves the best accuracy** (97.48%) with minimal forgetting (2.71%). The combination of reservoir sampling and joint training proves highly effective on Split-MNIST.
 
-2. **MoB-TaskAware demonstrates selective retention**: Tasks 1, 3, 4 maintain near-perfect accuracy (99.9%), but Task 2 catastrophically forgets (1.91%). This suggests routing issues where Task 2 data gets misrouted after later tasks are learned.
+2. **MoB-TaskAware demonstrates selective retention**: Tasks 1, 4 maintain near-perfect accuracy (99.9%), Task 3 retains well (89.7%), but Task 2 suffers significant forgetting (26.44%). Expert 3 handles both Task 2 and Task 5, causing interference.
 
 3. **Gated MoE validates MoB's core hypothesis**: The learned gater network fails to properly route after Task 1, achieving only 19.86% overall accuracy. This is precisely the "gater forgetting" problem MoB was designed to solve.
 
@@ -696,7 +713,7 @@ The benchmark used optimized hyperparameters from Optuna-based Bayesian search:
    - 17.4x more FLOPs (3,327B vs 191B)
    - **Task-Oracle mode (99.84%)**: Knows which column to use - unfair advantage
    - **Task-Agnostic mode (73.58%)**: Confidence-based routing - fair comparison with MoB
-   - When fairly compared (task-agnostic), PNN performs slightly below MoB-TaskAware (73.58% vs 76.61%)
+   - When fairly compared (task-agnostic), PNN performs below MoB-TaskAware (73.58% vs 79.03%)
 
 5. **MoB is most memory-efficient**: 54.79 MB peak VRAM vs 62.93 MB for Gated MoE (13% savings) and 101.07 MB for A-GEM (46% savings). This comes from training only one expert per batch.
 
@@ -704,11 +721,13 @@ The benchmark used optimized hyperparameters from Optuna-based Bayesian search:
 
 7. **Monolithic+EWC fails on middle tasks**: Tasks 2, 3, 4 all drop to 0% accuracy, while Task 1 and 5 are retained. This suggests EWC alone cannot protect a single network from sequential overwriting.
 
-8. **Online MoB needs optimization**: The 59.53% accuracy reflects untuned hyperparameters. The method fails to learn Tasks 2 and 5 entirely, likely due to shift detection thresholds.
+8. **Online MoB outperforms Task-Aware MoB**: With optimized hyperparameters (λ_ewc=971.27, shift_threshold=2.58), MoB-Online achieves **90.22% accuracy**, surpassing MoB-TaskAware (79.03%). This demonstrates that automatic shift detection can be more effective than explicit task boundaries when properly tuned.
 
-9. **Training time vs accuracy tradeoff**: ER and Monolithic+EWC are fastest (46.6s) but ER achieves 97.48% while Mono+EWC achieves only 37.34%. MoB-TaskAware takes 89s for 76.61%.
+9. **Why Online MoB succeeds**: MoB-Online's shift detection allows more granular expert specialization. While Task-Aware MoB forces one expert per task (leading to Expert 3 handling both Task 2 and Task 5), Online MoB can detect sub-task patterns and route more flexibly. The per-digit results show Expert 3 specializes on digits 0-1, Expert 1 on digits 2-3 and 8-9, Expert 2 on digits 4-5, and Expert 0 on digits 6-7.
 
-10. **Throughput reflects architecture**: Monolithic methods achieve ~5,150 samples/s while MoB methods achieve ~2,600 samples/s due to bid computation overhead. However, MoB uses 4x fewer FLOPs per training run.
+10. **Training time vs accuracy tradeoff**: ER and Monolithic+EWC are fastest (46.6s) but ER achieves 97.48% while Mono+EWC achieves only 37.34%. MoB-TaskAware takes 89s for 79.03%.
+
+11. **Throughput reflects architecture**: Monolithic methods achieve ~5,150 samples/s while MoB methods achieve ~2,600 samples/s due to bid computation overhead. However, MoB uses 4x fewer FLOPs per training run.
 
 ---
 
@@ -748,13 +767,13 @@ python -c "from mob import ExpertPool, PerBatchVCGAuction; print('MoB installed 
 ### Quick Start: Run Task-Aware MoB
 
 ```bash
-python tests/run_mob_only.py --seed 42 --lambda_ewc 1000 --reset_optimizer
+python tests/run_mob_only.py --seed 42 --lambda_ewc 277.54 --alpha 0.355 --beta 0.415 --forgetting_cost_scale 2.13 --reset_optimizer
 ```
 
 ### Run Online MoB
 
 ```bash
-python tests/run_continual_mob.py --seed 42 --lambda_ewc 40 --shift_threshold 2.0
+python tests/run_continual_mob.py --seed 42 --lambda_ewc 971.27 --alpha 0.5278 --beta 0.6333 --shift_threshold 2.58 --learning_rate 0.000683 --forgetting_cost_scale 0.7949 --reset_optimizer
 ```
 
 ### Run All Baselines Comparison
@@ -1051,8 +1070,8 @@ Throughout this development process, several important insights emerged:
 
 The project has reached a stable point:
 
-- **Task-Aware MoB**: Well-tuned with λ_ewc=1000 and Fisher clamping, achieving competitive results
-- **Online MoB**: Functional but hyperparameters not yet optimized - this remains future work
+- **Task-Aware MoB**: Achieves 79.03% average accuracy with optimized hyperparameters (λ_ewc=277.54, α=0.355, β=0.415) and Fisher clamping. Outperforms PNN in task-agnostic evaluation (79.03% vs 73.58%) while using 3.6x fewer parameters.
+- **Online MoB**: Achieves **90.22%** with optimized hyperparameters (λ_ewc=971.27, shift_threshold=2.58), outperforming Task-Aware MoB despite having no task boundary information.
 - **Five Baselines**: All implemented with resource tracking
 - **Comprehensive Benchmarks**: Full comparison across accuracy, forgetting, and resource usage
 ---

@@ -1,0 +1,44 @@
+{
+  "seed": 42,
+  "config": {
+    "num_experts": 4,
+    "num_tasks": 5,
+    "alpha": 0.355,
+    "beta": 0.415,
+    "lambda_ewc": 277.54,
+    "learning_rate": 0.00103,
+    "forgetting_cost_scale": 2.13,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4,
+    "use_lwf": false,
+    "lwf_temperature": 2.0,
+    "lwf_alpha": 0.1,
+    "bid_formula": "addition",
+    "reset_optimizer": true,
+    "idle_threshold": 100
+  },
+  "task_accuracies": [
+    0.9990543735224586,
+    0.9897159647404505,
+    0.9994663820704376,
+    0.998992950654582,
+    0.8643469490670701
+  ],
+  "final_accuracies": [
+    0.9990543723106384,
+    0.2688540518283844,
+    0.9482390880584717,
+    0.9672709107398987,
+    0.7382753491401672
+  ],
+  "avg_accuracy": 0.784338754415512,
+  "forgetting": 0.2009528120126339,
+  "expert_task_wins": {
+    "0": 2,
+    "1": 3,
+    "2": 0,
+    "3": 1,
+    "4": 3
+  }
+}

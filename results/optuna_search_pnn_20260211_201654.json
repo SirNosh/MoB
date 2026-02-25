@@ -1,0 +1,1217 @@
+{
+  "model_type": "pnn",
+  "best_accuracy": 0.7421599999999999,
+  "best_std": 0.021640573005352715,
+  "best_all_accuracies": [
+    0.7288,
+    0.7792,
+    0.7253,
+    0.7232,
+    0.7543
+  ],
+  "best_params": {
+    "max_columns": -1,
+    "learning_rate": 0.0004939713749567103
+  },
+  "n_trials": 100,
+  "n_pruned": 85,
+  "seeds": [
+    42,
+    123,
+    456,
+    789,
+    1024
+  ],
+  "all_trials": [
+    {
+      "number": 0,
+      "value": 0.63922,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0015751320499779737
+      },
+      "state": "1",
+      "std": 0.0368472197051555,
+      "all_accs": [
+        0.6647,
+        0.6967,
+        0.6235,
+        0.5928,
+        0.6184
+      ]
+    },
+    {
+      "number": 1,
+      "value": 0.45814000000000005,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.005399484409787433
+      },
+      "state": "1",
+      "std": 0.05360942454457051,
+      "all_accs": [
+        0.4477,
+        0.4175,
+        0.3867,
+        0.5194,
+        0.5194
+      ]
+    },
+    {
+      "number": 2,
+      "value": 0.35442,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.008706020878304856
+      },
+      "state": "1",
+      "std": 0.05951505355790248,
+      "all_accs": [
+        0.3375,
+        0.4441,
+        0.2763,
+        0.3975,
+        0.3167
+      ]
+    },
+    {
+      "number": 3,
+      "value": 0.59338,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.00023270677083837802
+      },
+      "state": "1",
+      "std": 0.01781947249499827,
+      "all_accs": [
+        0.5759,
+        0.5735,
+        0.6222,
+        0.6008,
+        0.5945
+      ]
+    },
+    {
+      "number": 4,
+      "value": 0.71448,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0003823475224675188
+      },
+      "state": "1",
+      "std": 0.024575711586849305,
+      "all_accs": [
+        0.7132,
+        0.7068,
+        0.7063,
+        0.686,
+        0.7601
+      ]
+    },
+    {
+      "number": 5,
+      "value": 0.5764,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.0005404103854647331
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 6,
+      "value": 0.6847799999999998,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0010677482709481358
+      },
+      "state": "1",
+      "std": 0.02296940573893893,
+      "all_accs": [
+        0.692,
+        0.7096,
+        0.6416,
+        0.6857,
+        0.695
+      ]
+    },
+    {
+      "number": 7,
+      "value": 0.672,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00021930485556643703
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 8,
+      "value": 0.496,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.004138040112561018
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 9,
+      "value": 0.70586,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0007591104805282694
+      },
+      "state": "1",
+      "std": 0.02079342203678846,
+      "all_accs": [
+        0.7298,
+        0.707,
+        0.7246,
+        0.6957,
+        0.6722
+      ]
+    },
+    {
+      "number": 10,
+      "value": 0.6335,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00010280029617905622
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 11,
+      "value": 0.7421599999999999,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0004939713749567103
+      },
+      "state": "1",
+      "std": 0.021640573005352715,
+      "all_accs": [
+        0.7288,
+        0.7792,
+        0.7253,
+        0.7232,
+        0.7543
+      ]
+    },
+    {
+      "number": 12,
+      "value": 0.6973,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00039791699049627176
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 13,
+      "value": 0.591,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.001887745790142909
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 14,
+      "value": 0.6686,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00029040476918499767
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 15,
+      "value": 0.6512,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00011956170164298432
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 16,
+      "value": 0.7240599999999999,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.000600465793427398
+      },
+      "state": "1",
+      "std": 0.025718289212154088,
+      "all_accs": [
+        0.7658,
+        0.736,
+        0.6968,
+        0.7237,
+        0.698
+      ]
+    },
+    {
+      "number": 17,
+      "value": 0.6634,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0009023709638371475
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 18,
+      "value": 0.5275,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0025852202685567693
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 19,
+      "value": 0.6144,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.0005959206131645767
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 20,
+      "value": 0.6872,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00015194170294907577
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 21,
+      "value": 0.7101,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00035397284510561627
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 22,
+      "value": 0.7238,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0005496862837012024
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 23,
+      "value": 0.698,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.001279292639246536
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 24,
+      "value": 0.713,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0004222821731274237
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 25,
+      "value": 0.6544,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00020792649069747561
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 26,
+      "value": 0.7072,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0007313888489692293
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 27,
+      "value": 0.7325999999999999,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0002805094210329644
+      },
+      "state": "1",
+      "std": 0.02471283067558225,
+      "all_accs": [
+        0.7394,
+        0.722,
+        0.7216,
+        0.7035,
+        0.7765
+      ]
+    },
+    {
+      "number": 28,
+      "value": 0.5762,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.0001617650372933002
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 29,
+      "value": 0.6422,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00146646756755208
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 30,
+      "value": 0.575,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.002039335658760729
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 31,
+      "value": 0.6455,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0002810981615769229
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 32,
+      "value": 0.7,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0004197009513740603
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 33,
+      "value": 0.6747,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00031270252642728885
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 34,
+      "value": 0.6419,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0005047116346834324
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 35,
+      "value": 0.5782,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.0007135498172787432
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 36,
+      "value": 0.7123,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0010145936423506818
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 37,
+      "value": 0.6652,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00024723522717630544
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 38,
+      "value": 0.5784,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.00018117832061367652
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 39,
+      "value": 0.7071,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0004809463232057728
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 40,
+      "value": 0.7282,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0006263187905446394
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 41,
+      "value": 0.7163,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0007403174853223902
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 42,
+      "value": 0.7049,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0008802565429049991
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 43,
+      "value": 0.6985,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0003482399688361997
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 44,
+      "value": 0.6918,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.001106850721317917
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 45,
+      "value": 0.74102,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00044906499561069474
+      },
+      "state": "1",
+      "std": 0.021367676523197376,
+      "all_accs": [
+        0.7372,
+        0.7788,
+        0.7364,
+        0.7124,
+        0.7403
+      ]
+    },
+    {
+      "number": 46,
+      "value": 0.3833,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00852049911662979
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 47,
+      "value": 0.665,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0002530651496178272
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 48,
+      "value": 0.7285,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0004519012810720159
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 49,
+      "value": 0.5623,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.0003222047535830704
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 50,
+      "value": 0.7288,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0006050359321932763
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 51,
+      "value": 0.6909,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0003701820986813625
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 52,
+      "value": 0.73024,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0008326983980782151
+      },
+      "state": "1",
+      "std": 0.04735929053522657,
+      "all_accs": [
+        0.7392,
+        0.8014,
+        0.727,
+        0.7312,
+        0.6524
+      ]
+    },
+    {
+      "number": 53,
+      "value": 0.6961,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0008305193985039485
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 54,
+      "value": 0.7363,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0005236102825979965
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 55,
+      "value": 0.6913,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0012467738070245386
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 56,
+      "value": 0.6511,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0002114611712023528
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 57,
+      "value": 0.7146,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0006389817764513219
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 58,
+      "value": 0.7075,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00038938322631985005
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 59,
+      "value": 0.6671,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00028299222821796057
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 60,
+      "value": 0.4489,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0038546912594668884
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 61,
+      "value": 0.6467,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0008232884534559255
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 62,
+      "value": 0.6818,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0004676106156697868
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 63,
+      "value": 0.6273,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0016499430444351212
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 64,
+      "value": 0.6647,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0006944980365595621
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 65,
+      "value": 0.6911,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.000550034344646269
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 66,
+      "value": 0.5743,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.0011225593315378445
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 67,
+      "value": 0.6992999999999999,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0009815635082422915
+      },
+      "state": "1",
+      "std": 0.042641060024347435,
+      "all_accs": [
+        0.7459,
+        0.7288,
+        0.6845,
+        0.7131,
+        0.6242
+      ]
+    },
+    {
+      "number": 68,
+      "value": 0.69,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00042429331504262085
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 69,
+      "value": 0.6585,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00018400254333980775
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 70,
+      "value": 0.7266,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0005502205984175487
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 71,
+      "value": 0.71326,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0008842852742888029
+      },
+      "state": "1",
+      "std": 0.03257966236780241,
+      "all_accs": [
+        0.7607,
+        0.7399,
+        0.7071,
+        0.6804,
+        0.6782
+      ]
+    },
+    {
+      "number": 72,
+      "value": 0.7222,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0007648514552254198
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 73,
+      "value": 0.5938,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0014173160174383358
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 74,
+      "value": 0.6998,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.000639299680065953
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 75,
+      "value": 0.6495,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0008932181258124465
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 76,
+      "value": 0.7351,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0009829141998404431
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 77,
+      "value": 0.6508,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0001295116149408357
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 78,
+      "value": 0.5989,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.00038692781399285334
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 79,
+      "value": 0.7103,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0003228434733005926
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 80,
+      "value": 0.74104,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0005095869211934055
+      },
+      "state": "1",
+      "std": 0.01798917452247324,
+      "all_accs": [
+        0.7639,
+        0.7441,
+        0.7286,
+        0.7138,
+        0.7548
+      ]
+    },
+    {
+      "number": 81,
+      "value": 0.6892,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00045204620631312403
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 82,
+      "value": 0.6528,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0006839800319982269
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 83,
+      "value": 0.6917,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0005106073343938924
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 84,
+      "value": 0.6401,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00025601602128235947
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 85,
+      "value": 0.6742,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0005823716884939399
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 86,
+      "value": 0.699,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0003397591887064486
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 87,
+      "value": 0.6925,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0007901530921504839
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 88,
+      "value": 0.6994,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0011671481545335017
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 89,
+      "value": 0.7101,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00028621023292427813
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 90,
+      "value": 0.7316,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00041508199001162664
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 91,
+      "value": 0.7093,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.000693177769717671
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 92,
+      "value": 0.7087,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.000977503632371143
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 93,
+      "value": 0.6745,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0009855858248709703
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 94,
+      "value": 0.7046,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.00048442189499471166
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 95,
+      "value": 0.6622,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0005844569920921172
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 96,
+      "value": 0.6089,
+      "params": {
+        "max_columns": 4,
+        "learning_rate": 0.001276158335145765
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 97,
+      "value": 0.6629,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.0008716951661927835
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 98,
+      "value": 0.5525,
+      "params": {
+        "max_columns": 5,
+        "learning_rate": 0.0021675554510682737
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 99,
+      "value": 0.6452,
+      "params": {
+        "max_columns": -1,
+        "learning_rate": 0.00036800088205801924
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    }
+  ]
+}

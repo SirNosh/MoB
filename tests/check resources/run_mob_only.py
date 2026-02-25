@@ -362,8 +362,16 @@ class ExpertPoolLocal:
         return self.experts[winner_id].train_on_batch(x, y, optimizers[winner_id])
 
     def evaluate_all(self, dataloader, verbose: bool = False) -> Dict:
-        """Evaluate using auction-based routing (full bid = exec + forget cost)."""
-        import math
+        """
+        Evaluate using pseudo-label auction routing.
+
+        Uses FORGET-COST ONLY for routing to avoid the "confidently wrong" problem
+        where an expert trained on different tasks predicts everything as its known
+        classes with high confidence, giving artificially low exec_cost.
+
+        Expert with lowest forget_cost = their Fisher-protected knowledge is
+        most aligned with this data (gradients won't hurt their memory).
+        """
         all_labels = []
         winner_preds = []
         expert_selections = {i: 0 for i in range(self.num_experts)}
@@ -384,20 +392,16 @@ class ExpertPoolLocal:
                     logits = expert.model(x_device)
                     batch_logits.append(logits)
 
-                # Compute execution cost (loss on pseudo-labels)
+                # Use pseudo-labels (model's own predictions) instead of ground truth
                 pseudo_labels = logits.argmax(dim=-1).detach()
-                raw_exec = F.cross_entropy(logits, pseudo_labels).item()
 
-                # Compute forgetting cost
+                # Compute forgetting cost with pseudo-labels
                 forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
                 expert_forget_costs_sum[i] += forget_cost
 
-                # Full bid: same formula as compute_bid
-                # ADD forgetting cost (low forget = low bid = wins)
-                norm_exec = raw_exec / 2.5
-                norm_forget = math.log1p(forget_cost) / 10.0
-                bid = expert.alpha * norm_exec + expert.beta * norm_forget
-                batch_bids[i] = bid
+                # FORGET-COST ONLY routing: route to expert with lowest forget_cost
+                # This avoids the "confidently wrong" problem with pseudo-label exec_cost
+                batch_bids[i] = forget_cost
 
             # Route to expert with LOWEST bid (same as VCG auction)
             winner_id = np.argmin(batch_bids)
@@ -414,7 +418,7 @@ class ExpertPoolLocal:
         total_batches = sum(expert_selections.values())
         primary_eval_expert = max(expert_selections, key=expert_selections.get)
         avg_forget_costs = {k: v/num_batches for k, v in expert_forget_costs_sum.items()}
-        
+
         return {
             'ensemble_accuracy': accuracy,
             'expert_selections': expert_selections,
@@ -782,7 +786,7 @@ def main():
     }
     with open(f"results/mob_results_seed_{args.seed}.json", 'w') as f:
         json.dump(summary, f, indent=2)
-    print(f"\n✓ Results saved to: results/mob_results_seed_{args.seed}.json")
+    print(f"\n[OK] Results saved to: results/mob_results_seed_{args.seed}.json")
 
 
 if __name__ == '__main__':

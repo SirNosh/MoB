@@ -1,0 +1,46 @@
+{
+  "seed": 42,
+  "config": {
+    "num_tasks": 5,
+    "width_multiplier": 2,
+    "memory_size": 256,
+    "memory_batch_size": 32,
+    "learning_rate": 0.001,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4
+  },
+  "task_accuracies": [
+    0.9995271867612293,
+    0.9990205680705191,
+    1.0,
+    1.0,
+    0.9974785678265254
+  ],
+  "final_accuracies": [
+    0.5271867612293144,
+    0.4524975514201763,
+    0.2876200640341515,
+    0.5800604229607251,
+    0.9974785678265254
+  ],
+  "avg_accuracy": 0.5689686734941786,
+  "forgetting": 0.5377957387968453,
+  "projection_count": 4658,
+  "param_counts": {
+    "total_params": 1682954,
+    "trainable_params": 1682954
+  },
+  "memory_distribution": {
+    "3": 29,
+    "7": 30,
+    "1": 31,
+    "2": 17,
+    "9": 26,
+    "4": 26,
+    "8": 29,
+    "5": 28,
+    "6": 22,
+    "0": 18
+  }
+}

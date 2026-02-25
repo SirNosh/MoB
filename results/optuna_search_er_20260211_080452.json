@@ -1,0 +1,1443 @@
+{
+  "model_type": "er",
+  "best_accuracy": 0.9790788731339222,
+  "best_std": 0.0023572356068080973,
+  "best_all_accuracies": [
+    0.978064785316179,
+    0.9788600276474793,
+    0.983647433014853,
+    0.977779563146479,
+    0.9770425565446199
+  ],
+  "best_params": {
+    "memory_size": 2048,
+    "replay_batch_size": 16,
+    "replay_weight": 1.7043423119775953,
+    "learning_rate": 0.0005517272368018488
+  },
+  "n_trials": 100,
+  "n_pruned": 81,
+  "seeds": [
+    42,
+    123,
+    456,
+    789,
+    1024
+  ],
+  "all_trials": [
+    {
+      "number": 0,
+      "value": 0.3805861642242979,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 64,
+        "replay_weight": 1.2421185223120967,
+        "learning_rate": 0.0026070247583707684
+      },
+      "state": "1",
+      "std": 0.3494551286314912,
+      "all_accs": [
+        0.09823499747856783,
+        0.09823499747856783,
+        0.8837309852005735,
+        0.7244948434852125,
+        0.09823499747856783
+      ]
+    },
+    {
+      "number": 1,
+      "value": 0.9102882883997166,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 64,
+        "replay_weight": 0.9206955354200199,
+        "learning_rate": 0.0003823475224675188
+      },
+      "state": "1",
+      "std": 0.007513054804986409,
+      "all_accs": [
+        0.903744310805416,
+        0.9129693222379165,
+        0.9233959672107137,
+        0.9026931637019391,
+        0.9086386780425981
+      ]
+    },
+    {
+      "number": 2,
+      "value": 0.8807898895401906,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 16,
+        "replay_weight": 1.2255876808378807,
+        "learning_rate": 0.0001238513729886094
+      },
+      "state": "1",
+      "std": 0.022023538336459963,
+      "all_accs": [
+        0.8777429736763779,
+        0.9023470564148639,
+        0.9022976639710298,
+        0.842235250336935,
+        0.8793265033017461
+      ]
+    },
+    {
+      "number": 3,
+      "value": 0.9757476663482857,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.400042750373098,
+        "learning_rate": 0.0007591104805282694
+      },
+      "state": "1",
+      "std": 0.002593235667801694,
+      "all_accs": [
+        0.9747166091787886,
+        0.9716035864621441,
+        0.9765953138475967,
+        0.9762826401264082,
+        0.9795401821264905
+      ]
+    },
+    {
+      "number": 4,
+      "value": 0.9688527341722606,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 16,
+        "replay_weight": 1.1387495307522313,
+        "learning_rate": 0.00023426581058204064
+      },
+      "state": "1",
+      "std": 0.0030554263991372775,
+      "all_accs": [
+        0.9710966981033626,
+        0.9721011755340342,
+        0.9685427859063763,
+        0.9632979428829893,
+        0.9692250684345408
+      ]
+    },
+    {
+      "number": 5,
+      "value": 0.7841154252472753,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 16,
+        "replay_weight": 0.18593184893002235,
+        "learning_rate": 0.0004473636174621269
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 6,
+      "value": 0.10176500252143217,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 64,
+        "replay_weight": 0.24164622299156457,
+        "learning_rate": 0.009413993046829943
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 7,
+      "value": 0.9655972368345738,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 32,
+        "replay_weight": 0.7810848842341179,
+        "learning_rate": 0.0001705053926026929
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 8,
+      "value": 0.8799273507206278,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 32,
+        "replay_weight": 1.7857042108950205,
+        "learning_rate": 0.0008798929749689024
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 9,
+      "value": 0.9530803160609753,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 32,
+        "replay_weight": 0.14829634081378085,
+        "learning_rate": 0.00016435497475111326
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 10,
+      "value": 0.9752434316712975,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.9421205104969448,
+        "learning_rate": 0.0022005828785027445
+      },
+      "state": "1",
+      "std": 0.0023340986263665872,
+      "all_accs": [
+        0.9751873837819879,
+        0.976801143248611,
+        0.9707406317502226,
+        0.9766177880806086,
+        0.9768702114950576
+      ]
+    },
+    {
+      "number": 11,
+      "value": 0.9409499767949162,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.9723889196986546,
+        "learning_rate": 0.002099040304529486
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 12,
+      "value": 0.973949640390587,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.5840561978006056,
+        "learning_rate": 0.0017175482489007374
+      },
+      "state": "1",
+      "std": 0.003264571936412795,
+      "all_accs": [
+        0.9757341998091397,
+        0.9731005760193836,
+        0.9770894287843624,
+        0.9679610906544642,
+        0.9758629066855848
+      ]
+    },
+    {
+      "number": 13,
+      "value": 0.10176500252143217,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.623723631515116,
+        "learning_rate": 0.005671708966651099
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 14,
+      "value": 0.9760881000655296,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.4112318915769588,
+        "learning_rate": 0.0010335434188258172
+      },
+      "state": "1",
+      "std": 0.0018878916842529605,
+      "all_accs": [
+        0.9798230033688032,
+        0.9746214594432075,
+        0.9753666674257351,
+        0.9752738744113257,
+        0.9753554956785763
+      ]
+    },
+    {
+      "number": 15,
+      "value": 0.9552915358512404,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 16,
+        "replay_weight": 1.4631157674869568,
+        "learning_rate": 0.0009455031526348338
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 16,
+      "value": 0.9643315021754428,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 0.5691358804819431,
+        "learning_rate": 0.0005054167589572193
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 17,
+      "value": 0.9776551305902913,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3877364863929555,
+        "learning_rate": 0.0006821018330793578
+      },
+      "state": "1",
+      "std": 0.002693025863479763,
+      "all_accs": [
+        0.9789811083893175,
+        0.9778704260634692,
+        0.9794174060837184,
+        0.9796016224639097,
+        0.9724050899510412
+      ]
+    },
+    {
+      "number": 18,
+      "value": 0.9681912984785754,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 64,
+        "replay_weight": 0.9334496483786834,
+        "learning_rate": 0.0014366940780457876
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 19,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 32,
+        "replay_weight": 1.3965928707872322,
+        "learning_rate": 0.003547034317540069
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 20,
+      "value": 0.969200290825581,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 16,
+        "replay_weight": 0.665777312938505,
+        "learning_rate": 0.0003003346586430717
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 21,
+      "value": 0.977193265166185,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3817181798636087,
+        "learning_rate": 0.0006677560822039317
+      },
+      "state": "1",
+      "std": 0.0020126278697186733,
+      "all_accs": [
+        0.9762439323435774,
+        0.9758266899299667,
+        0.9809548322542458,
+        0.9775405389300245,
+        0.9754003323731103
+      ]
+    },
+    {
+      "number": 22,
+      "value": 0.9776391898511744,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6929297411216353,
+        "learning_rate": 0.0006566694514494922
+      },
+      "state": "1",
+      "std": 0.0016142328273125199,
+      "all_accs": [
+        0.9795904519436617,
+        0.9755453166916332,
+        0.9762672692545985,
+        0.9793472291414599,
+        0.9774456822245183
+      ]
+    },
+    {
+      "number": 23,
+      "value": 0.9790788731339222,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7043423119775953,
+        "learning_rate": 0.0005517272368018488
+      },
+      "state": "1",
+      "std": 0.0023572356068080973,
+      "all_accs": [
+        0.978064785316179,
+        0.9788600276474793,
+        0.983647433014853,
+        0.977779563146479,
+        0.9770425565446199
+      ]
+    },
+    {
+      "number": 24,
+      "value": 0.9574481519009106,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6970206642837926,
+        "learning_rate": 0.0005591285049979052
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 25,
+      "value": 0.9780648995575845,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7740513389309729,
+        "learning_rate": 0.0003177396413161928
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 26,
+      "value": 0.9782923321084868,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.85210620379499,
+        "learning_rate": 0.0010956163853457917
+      },
+      "state": "1",
+      "std": 0.0023364378772155465,
+      "all_accs": [
+        0.9808543189023398,
+        0.9747564426861363,
+        0.9775027915632511,
+        0.9809133321729707,
+        0.9774347752177359
+      ]
+    },
+    {
+      "number": 27,
+      "value": 0.9771132957779667,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.8459065626971642,
+        "learning_rate": 0.0013068940994217873
+      },
+      "state": "1",
+      "std": 0.0019190013767576512,
+      "all_accs": [
+        0.9800545715408037,
+        0.9754913227953971,
+        0.9767724464703313,
+        0.9748162985776284,
+        0.9784318395056729
+      ]
+    },
+    {
+      "number": 28,
+      "value": 0.10176500252143217,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 64,
+        "replay_weight": 1.524508340936877,
+        "learning_rate": 0.003055988171342268
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 29,
+      "value": 0.929525767715063,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 32,
+        "replay_weight": 1.2699849554597646,
+        "learning_rate": 0.0012548028792985465
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 30,
+      "value": 0.10176500252143217,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 64,
+        "replay_weight": 1.8302468840113215,
+        "learning_rate": 0.004296061956711406
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 31,
+      "value": 0.9749231094362667,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6877601154835358,
+        "learning_rate": 0.0006276487224674034
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 32,
+      "value": 0.97412963390691,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6230567949396417,
+        "learning_rate": 0.0004069056877542724
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 33,
+      "value": 0.9383612896193332,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 16,
+        "replay_weight": 1.9969258188216703,
+        "learning_rate": 0.0007636809398007205
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 34,
+      "value": 0.9784453282249131,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.295362515802657,
+        "learning_rate": 0.0003158949194064669
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 35,
+      "value": 0.969372811770145,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.0300270266700964,
+        "learning_rate": 0.0010508075644738127
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 36,
+      "value": 0.9720757760511634,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 16,
+        "replay_weight": 1.1719938287311211,
+        "learning_rate": 0.00023301127805560768
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 37,
+      "value": 0.952833893746811,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 64,
+        "replay_weight": 1.874835006916914,
+        "learning_rate": 0.000490577061841926
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 38,
+      "value": 0.8499566553140336,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7210341986374762,
+        "learning_rate": 0.0017481585047374856
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 39,
+      "value": 0.9782379389608178,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.5266536331848957,
+        "learning_rate": 0.0007554638892031477
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 40,
+      "value": 0.9710530750990276,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 32,
+        "replay_weight": 1.8873950113091063,
+        "learning_rate": 0.00039469010626077243
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 41,
+      "value": 0.9780343353920522,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3346029192398408,
+        "learning_rate": 0.000672933915108993
+      },
+      "state": "1",
+      "std": 0.0015319522416158146,
+      "all_accs": [
+        0.9807844455456285,
+        0.9762265774226615,
+        0.9783531786366261,
+        0.9773474986748061,
+        0.9774599766805384
+      ]
+    },
+    {
+      "number": 42,
+      "value": 0.9751973823776405,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.133993324201529,
+        "learning_rate": 0.0005791804950818946
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 43,
+      "value": 0.9792658821323551,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3135715057096173,
+        "learning_rate": 0.000756993206003748
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 44,
+      "value": 0.9726297827097049,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.5257675144933445,
+        "learning_rate": 0.0008944332451220861
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 45,
+      "value": 0.9750741563970484,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.698695950895605,
+        "learning_rate": 0.0002285811886192032
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 46,
+      "value": 0.9740544660425536,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.5981912650541459,
+        "learning_rate": 0.0010575917471271708
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 47,
+      "value": 0.7730247334391266,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 16,
+        "replay_weight": 0.3403931098053473,
+        "learning_rate": 0.00046764715090375034
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 48,
+      "value": 0.918050032109563,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 16,
+        "replay_weight": 1.453837182919789,
+        "learning_rate": 0.0017672361702880362
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 49,
+      "value": 0.9769641136844548,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 32,
+        "replay_weight": 1.0709404288095463,
+        "learning_rate": 0.0006834821755623386
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 50,
+      "value": 0.9563516507744948,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 64,
+        "replay_weight": 1.7807439611225773,
+        "learning_rate": 0.00010704401996178635
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 51,
+      "value": 0.9785990459402228,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.226113947057797,
+        "learning_rate": 0.000654622854547619
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 52,
+      "value": 0.9755380656074377,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.439456450952566,
+        "learning_rate": 0.0008561247879343182
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 53,
+      "value": 0.973007599165687,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3728134207870786,
+        "learning_rate": 0.0012310061012019789
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 54,
+      "value": 0.9772585697051225,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3587073653147423,
+        "learning_rate": 0.000554357241601714
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 55,
+      "value": 0.9780597299484132,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.5534751479613595,
+        "learning_rate": 0.0003542759893110851
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 56,
+      "value": 0.977509947711496,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.9273834199235604,
+        "learning_rate": 0.0015452594439391283
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 57,
+      "value": 0.9692431577450631,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 0.8804693797164606,
+        "learning_rate": 0.0011065762338583957
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 58,
+      "value": 0.9724804140991656,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 16,
+        "replay_weight": 1.659506402135054,
+        "learning_rate": 0.0004446019422699094
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 59,
+      "value": 0.9780308543753963,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 32,
+        "replay_weight": 1.4809894210440797,
+        "learning_rate": 0.00018606789125788652
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 60,
+      "value": 0.9753717205027668,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7461328533152627,
+        "learning_rate": 0.0023668677555909253
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 61,
+      "value": 0.9645787992399679,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.811338562621606,
+        "learning_rate": 0.0013253632001526535
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 62,
+      "value": 0.9774514716933069,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.8651213562237676,
+        "learning_rate": 0.00081335524589398
+      },
+      "state": "1",
+      "std": 0.0024300953465684603,
+      "all_accs": [
+        0.9816484988774119,
+        0.9742841592224517,
+        0.9775412157941006,
+        0.9776808124584241,
+        0.9761026721141457
+      ]
+    },
+    {
+      "number": 63,
+      "value": 0.9739463168398732,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.9219342891733462,
+        "learning_rate": 0.0008596903900726049
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 64,
+      "value": 0.975290736216718,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6202104588037467,
+        "learning_rate": 0.0005372381470786752
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 65,
+      "value": 0.9370401222219916,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 16,
+        "replay_weight": 1.981366636987604,
+        "learning_rate": 0.0006910296536225323
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 66,
+      "value": 0.9452232946358541,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 64,
+        "replay_weight": 1.8282842239105908,
+        "learning_rate": 0.0006071615354784448
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 67,
+      "value": 0.8007845985549883,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 16,
+        "replay_weight": 1.1929648345528616,
+        "learning_rate": 0.0009443818515453351
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 68,
+      "value": 0.10176500252143217,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7377716735643216,
+        "learning_rate": 0.007973999239532528
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 69,
+      "value": 0.9771564460940028,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.8765776824418319,
+        "learning_rate": 0.0002714881445724217
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 70,
+      "value": 0.9765287536818029,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6475667340849285,
+        "learning_rate": 0.0007979028335248649
+      },
+      "state": "1",
+      "std": 0.0026527369392397226,
+      "all_accs": [
+        0.9806821707174527,
+        0.9762633960311888,
+        0.9751735105367816,
+        0.9777940955054415,
+        0.9727305956181498
+      ]
+    },
+    {
+      "number": 71,
+      "value": 0.9788411032366291,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.823681238361675,
+        "learning_rate": 0.0010838029078476595
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 72,
+      "value": 0.9743658224244012,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3440925468455551,
+        "learning_rate": 0.001478441364921436
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 73,
+      "value": 0.9799476468806063,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.8650181421052159,
+        "learning_rate": 0.0012333593682721763
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 74,
+      "value": 0.9781543008809581,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.93630078832603,
+        "learning_rate": 0.0019530646249661051
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 75,
+      "value": 0.9612818817070481,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 16,
+        "replay_weight": 1.4878644783780468,
+        "learning_rate": 0.0007041667659926327
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 76,
+      "value": 0.9766530503201178,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 32,
+        "replay_weight": 1.5835806423741488,
+        "learning_rate": 0.0004530039147660252
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 77,
+      "value": 0.9782022120873852,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 64,
+        "replay_weight": 1.7584755721934096,
+        "learning_rate": 0.00036900272446611254
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 78,
+      "value": 0.9778944191020177,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6812290645839367,
+        "learning_rate": 0.0009887979837854102
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 79,
+      "value": 0.9098330564050761,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 16,
+        "replay_weight": 1.0922119869402631,
+        "learning_rate": 0.0005182441462974044
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 80,
+      "value": 0.8439322600093014,
+      "params": {
+        "memory_size": 128,
+        "replay_batch_size": 16,
+        "replay_weight": 0.969518316921078,
+        "learning_rate": 0.0006237580661807693
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 81,
+      "value": 0.9762160618720094,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.2645925802679088,
+        "learning_rate": 0.000803460779029404
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 82,
+      "value": 0.9772087979472641,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7812630696909513,
+        "learning_rate": 0.0007961783244212381
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 83,
+      "value": 0.9754005063256546,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6643767858473946,
+        "learning_rate": 0.0009251579997558926
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 84,
+      "value": 0.9728461668025783,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.566128346996903,
+        "learning_rate": 0.000591004441048958
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 85,
+      "value": 0.9702659965788467,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6331515097667635,
+        "learning_rate": 0.001122721027667927
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 86,
+      "value": 0.9641306969788804,
+      "params": {
+        "memory_size": 512,
+        "replay_batch_size": 16,
+        "replay_weight": 1.4314909626966517,
+        "learning_rate": 0.0007348791526553375
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 87,
+      "value": 0.9787188077159048,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7110706461462928,
+        "learning_rate": 0.0008306468307638806
+      },
+      "state": "1",
+      "std": 0.0014586228534688413,
+      "all_accs": [
+        0.9815943204917911,
+        0.9777451975518103,
+        0.9784266874475882,
+        0.978056005987038,
+        0.9777718271012962
+      ]
+    },
+    {
+      "number": 88,
+      "value": 0.9791062108217643,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7200111426799296,
+        "learning_rate": 0.00040405694712245064
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 89,
+      "value": 0.9780557780845701,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 64,
+        "replay_weight": 1.8919014755416586,
+        "learning_rate": 0.0006598455206890518
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 90,
+      "value": 0.9787249599042726,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 32,
+        "replay_weight": 1.842481696796741,
+        "learning_rate": 0.0013986247535943807
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 91,
+      "value": 0.9764045906262357,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.5088200610409124,
+        "learning_rate": 0.0008560435802370493
+      },
+      "state": "1",
+      "std": 0.0040363332567829365,
+      "all_accs": [
+        0.9827693838981112,
+        0.9715773630423012,
+        0.9790180910450138,
+        0.9753781409604387,
+        0.9732799741853133
+      ]
+    },
+    {
+      "number": 92,
+      "value": 0.9784241887921784,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.961526645598799,
+        "learning_rate": 0.001195476752614592
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 93,
+      "value": 0.9801128822291714,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.778584462135315,
+        "learning_rate": 0.000991886486649734
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 94,
+      "value": 0.9769739929519379,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3158616954840847,
+        "learning_rate": 0.0005022519244532842
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 95,
+      "value": 0.9758973712377248,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.6369908061967529,
+        "learning_rate": 0.000809221649424577
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 96,
+      "value": 0.9791720320612709,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.683538079074273,
+        "learning_rate": 0.0006915909759013113
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 97,
+      "value": 0.9618965304706677,
+      "params": {
+        "memory_size": 1024,
+        "replay_batch_size": 16,
+        "replay_weight": 1.737939488980829,
+        "learning_rate": 0.0016390259429152924
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 98,
+      "value": 0.9741686504990194,
+      "params": {
+        "memory_size": 2048,
+        "replay_batch_size": 16,
+        "replay_weight": 1.7992135675600993,
+        "learning_rate": 0.0005589920283319744
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 99,
+      "value": 0.9206761038085751,
+      "params": {
+        "memory_size": 256,
+        "replay_batch_size": 16,
+        "replay_weight": 1.3918519421220046,
+        "learning_rate": 0.0004295489462640692
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    }
+  ]
+}

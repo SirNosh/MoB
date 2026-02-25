@@ -1,0 +1,1360 @@
+{
+  "model_type": "agem",
+  "best_accuracy": 0.7795306272382063,
+  "best_std": 0.014671902620557902,
+  "best_all_accuracies": [
+    0.7874609022975804,
+    0.7917520202036152,
+    0.7737133941835542,
+    0.7914355584343309,
+    0.7532912610719515
+  ],
+  "best_params": {
+    "memory_size": 1024,
+    "memory_batch_size": 64,
+    "learning_rate": 0.00010169983663809164
+  },
+  "n_trials": 100,
+  "n_pruned": 78,
+  "seeds": [
+    42,
+    123,
+    456,
+    789,
+    1024
+  ],
+  "all_trials": [
+    {
+      "number": 0,
+      "value": 0.6597654846525141,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0015930522616241021
+      },
+      "state": "1",
+      "std": 0.11487429015176928,
+      "all_accs": [
+        0.5535822946016679,
+        0.7087591841346276,
+        0.5065387546741362,
+        0.8228067019518672,
+        0.7071404879002712
+      ]
+    },
+    {
+      "number": 1,
+      "value": 0.6573194993252109,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0011207606211860567
+      },
+      "state": "1",
+      "std": 0.10625761463075516,
+      "all_accs": [
+        0.6250843949064977,
+        0.6324327799431309,
+        0.7233811322483623,
+        0.8115802678215056,
+        0.4941189217065579
+      ]
+    },
+    {
+      "number": 2,
+      "value": 0.7099377280248975,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00025081156860452336
+      },
+      "state": "1",
+      "std": 0.041215088135168124,
+      "all_accs": [
+        0.7491974788846424,
+        0.6423036394654104,
+        0.7536965161441838,
+        0.6891201974456818,
+        0.7153708081845693
+      ]
+    },
+    {
+      "number": 3,
+      "value": 0.46286610328845584,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.004138040112561018
+      },
+      "state": "1",
+      "std": 0.31209309675136143,
+      "all_accs": [
+        0.6124536728182308,
+        0.607924886734601,
+        0.10176500252143217,
+        0.8904219518465828,
+        0.10176500252143217
+      ]
+    },
+    {
+      "number": 4,
+      "value": 0.6928654484678074,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00032927591344236165
+      },
+      "state": "1",
+      "std": 0.04821255128102894,
+      "all_accs": [
+        0.6228449216369338,
+        0.7473514180622829,
+        0.6662256824023622,
+        0.6811529032922932,
+        0.746752316945164
+      ]
+    },
+    {
+      "number": 5,
+      "value": 0.33756833719630047,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 16,
+        "learning_rate": 0.006161049539380964
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 6,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 32,
+        "learning_rate": 0.004544383960336014
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 7,
+      "value": 0.5956396377846161,
+      "params": {
+        "memory_size": 2048,
+        "memory_batch_size": 32,
+        "learning_rate": 0.00024970737145052745
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 8,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 32,
+        "learning_rate": 0.005323617594751502
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 9,
+      "value": 0.5049699711924115,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0008798929749689024
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 10,
+      "value": 0.5045371820395993,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 16,
+        "learning_rate": 0.00010353677627159794
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 11,
+      "value": 0.6583353360082862,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0003508694095376826
+      },
+      "state": "1",
+      "std": 0.03497564687024998,
+      "all_accs": [
+        0.6547079169061816,
+        0.6214635645822938,
+        0.6191898096537853,
+        0.6936978191540345,
+        0.7026175697451353
+      ]
+    },
+    {
+      "number": 12,
+      "value": 0.6581588300353161,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00035372577817373546
+      },
+      "state": "1",
+      "std": 0.04114464743791559,
+      "all_accs": [
+        0.707458696391049,
+        0.60308213164413,
+        0.632610975099655,
+        0.7042939452757723,
+        0.6433484017659743
+      ]
+    },
+    {
+      "number": 13,
+      "value": 0.749103247475273,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001603401626985568
+      },
+      "state": "1",
+      "std": 0.01255333388132889,
+      "all_accs": [
+        0.7682386037095801,
+        0.7508355685207027,
+        0.7457339854474533,
+        0.729077538430746,
+        0.7516305412678832
+      ]
+    },
+    {
+      "number": 14,
+      "value": 0.750836701081291,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001111095169598539
+      },
+      "state": "1",
+      "std": 0.029067507861412132,
+      "all_accs": [
+        0.7726613953250278,
+        0.7784100912045601,
+        0.7578123421173191,
+        0.7486338038091671,
+        0.6966658729503805
+      ]
+    },
+    {
+      "number": 15,
+      "value": 0.5168231566638045,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.00010205480836706702
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 16,
+      "value": 0.7205817941161043,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001565742402008966
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 17,
+      "value": 0.49395957195857376,
+      "params": {
+        "memory_size": 2048,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0006013042446887069
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 18,
+      "value": 0.6091204850334289,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 32,
+        "learning_rate": 0.00017402331022875925
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 19,
+      "value": 0.10176500252143217,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.0021601863672613586
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 20,
+      "value": 0.64706419686279,
+      "params": {
+        "memory_size": 2048,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0005715824713414834
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 21,
+      "value": 0.742706935924368,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00016747586670819975
+      },
+      "state": "1",
+      "std": 0.021500284880113858,
+      "all_accs": [
+        0.7677600881828586,
+        0.736216086858241,
+        0.7549367139508047,
+        0.704751240104001,
+        0.7498705505259342
+      ]
+    },
+    {
+      "number": 22,
+      "value": 0.7470945282207366,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001571192944570225
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 23,
+      "value": 0.7391863216060807,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00019781247978650258
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 24,
+      "value": 0.7243811252806849,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00011931218710126155
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 25,
+      "value": 0.6745899596818463,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0005036506564206291
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 26,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0092336267166085
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 27,
+      "value": 0.6723577844756822,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.000231056036480204
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 28,
+      "value": 0.4516532520679606,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.00014717331408101362
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 29,
+      "value": 0.29628075226029515,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 32,
+        "learning_rate": 0.002171749674085607
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 30,
+      "value": 0.5516704053224843,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00043102531420985375
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 31,
+      "value": 0.6563629002766196,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00026375837469348653
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 32,
+      "value": 0.7287972205694578,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001265930743007078
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 33,
+      "value": 0.7489114440666306,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00019182542556043353
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 34,
+      "value": 0.6040618230240218,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.000820105231983924
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 35,
+      "value": 0.6872810006472349,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00027883783098013235
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 36,
+      "value": 0.7450825228979048,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0011742639173277065
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 37,
+      "value": 0.7258504756492854,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 64,
+        "learning_rate": 0.000132284611460796
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 38,
+      "value": 0.5864423976889844,
+      "params": {
+        "memory_size": 2048,
+        "memory_batch_size": 32,
+        "learning_rate": 0.0002188293331302706
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 39,
+      "value": 0.6772966420749589,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00030377965309518043
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 40,
+      "value": 0.49169482337383313,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 16,
+        "learning_rate": 0.00018581154323174455
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 41,
+      "value": 0.6700766416951539,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0003621403898483855
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 42,
+      "value": 0.7413734735711486,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010578943426506645
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 43,
+      "value": 0.7007524399430676,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00023093853725354672
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 44,
+      "value": 0.6852898707895936,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00014164756102318454
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 45,
+      "value": 0.5246331824363885,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 32,
+        "learning_rate": 0.0003064983612523754
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 46,
+      "value": 0.6358533763921312,
+      "params": {
+        "memory_size": 512,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00041642483483809864
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 47,
+      "value": 0.7357410486727173,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00017123752960854092
+      },
+      "state": "1",
+      "std": 0.0355798322338664,
+      "all_accs": [
+        0.7671325456370115,
+        0.6867503241437823,
+        0.7508778601732956,
+        0.7737958247596016,
+        0.7001486886498954
+      ]
+    },
+    {
+      "number": 48,
+      "value": 0.7148230636498706,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00016805003939291882
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 49,
+      "value": 0.5093120087966861,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.00011748393587216164
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 50,
+      "value": 0.723219188954148,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00020423143481978194
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 51,
+      "value": 0.7498698591511876,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00015674937762035163
+      },
+      "state": "1",
+      "std": 0.036392880291076554,
+      "all_accs": [
+        0.7853524136156447,
+        0.7179941123489278,
+        0.7837276543839358,
+        0.7664857206037693,
+        0.6957893948036609
+      ]
+    },
+    {
+      "number": 52,
+      "value": 0.7489441949997608,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010350132512656656
+      },
+      "state": "1",
+      "std": 0.04955689076207139,
+      "all_accs": [
+        0.7689754526561752,
+        0.7541078186562846,
+        0.7860247225775617,
+        0.7831419097990595,
+        0.6524710713097233
+      ]
+    },
+    {
+      "number": 53,
+      "value": 0.7380429239476892,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010635511109737329
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 54,
+      "value": 0.7378003998871144,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00015486659832196872
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 55,
+      "value": 0.7514649032721977,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00013254478817641772
+      },
+      "state": "1",
+      "std": 0.025641350186331104,
+      "all_accs": [
+        0.7687211793885864,
+        0.7594266359277155,
+        0.7147031132876063,
+        0.7846973774429233,
+        0.7297762103141568
+      ]
+    },
+    {
+      "number": 56,
+      "value": 0.7625925960233381,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010021868137762356
+      },
+      "state": "1",
+      "std": 0.020788375505932256,
+      "all_accs": [
+        0.7716286553108392,
+        0.7680242617209323,
+        0.7779325863884928,
+        0.7738618559460149,
+        0.7215156207504109
+      ]
+    },
+    {
+      "number": 57,
+      "value": 0.7654379274280073,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010055945489196838
+      },
+      "state": "1",
+      "std": 0.01262580187668613,
+      "all_accs": [
+        0.7829632392173813,
+        0.7575180157883314,
+        0.7670508479214322,
+        0.7732761820979511,
+        0.74638135211494
+      ]
+    },
+    {
+      "number": 58,
+      "value": 0.6405678170997489,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 32,
+        "learning_rate": 0.0001246409180246112
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 59,
+      "value": 0.7551201904660283,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00013311276844942403
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 60,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.002892239155051075
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 61,
+      "value": 0.7722374313829825,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010135044022074375
+      },
+      "state": "1",
+      "std": 0.01606617605019357,
+      "all_accs": [
+        0.7838969651899536,
+        0.7762046002613741,
+        0.7830332266800777,
+        0.7773742546469011,
+        0.7406781101366063
+      ]
+    },
+    {
+      "number": 62,
+      "value": 0.7564917482808283,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00011480826912390833
+      },
+      "state": "1",
+      "std": 0.02546758803130746,
+      "all_accs": [
+        0.78351814827944,
+        0.7704220769386867,
+        0.7451317155163069,
+        0.7712862820717671,
+        0.7121005185979412
+      ]
+    },
+    {
+      "number": 63,
+      "value": 0.7795306272382063,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010169983663809164
+      },
+      "state": "1",
+      "std": 0.014671902620557902,
+      "all_accs": [
+        0.7874609022975804,
+        0.7917520202036152,
+        0.7737133941835542,
+        0.7914355584343309,
+        0.7532912610719515
+      ]
+    },
+    {
+      "number": 64,
+      "value": 0.7686711665734499,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010064943522738421
+      },
+      "state": "1",
+      "std": 0.03276505646207779,
+      "all_accs": [
+        0.8006266092470572,
+        0.7661055383648467,
+        0.7193092704155661,
+        0.8078460155864585,
+        0.7494683992533206
+      ]
+    },
+    {
+      "number": 65,
+      "value": 0.7584424877100293,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010206222019495107
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 66,
+      "value": 0.7777862050200504,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00012108540750215525
+      },
+      "state": "1",
+      "std": 0.014355685426269442,
+      "all_accs": [
+        0.7842748650880513,
+        0.7934462266826997,
+        0.7726005969050517,
+        0.7862210222456736,
+        0.7523883141787758
+      ]
+    },
+    {
+      "number": 67,
+      "value": 0.508444186306642,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.0001275919794840242
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 68,
+      "value": 0.7794697291550233,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00010019588779369682
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 69,
+      "value": 0.7631357324613042,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00011560231620552175
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 70,
+      "value": 0.7382807915216556,
+      "params": {
+        "memory_size": 2048,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00014403019085138343
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 71,
+      "value": 0.7432252670054712,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00013947252474175704
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 72,
+      "value": 0.7402302414822884,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001172381013846522
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 73,
+      "value": 0.7833769078489699,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00013664851796647864
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 74,
+      "value": 0.7488975019420218,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.000117260571073463
+      },
+      "state": "1",
+      "std": 0.02765388666702225,
+      "all_accs": [
+        0.7853306666259723,
+        0.7084038290597421,
+        0.7287901227664311,
+        0.7699319796691216,
+        0.7520309115888417
+      ]
+    },
+    {
+      "number": 75,
+      "value": 0.7560843776761955,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00018281287060735766
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 76,
+      "value": 0.7671580944860508,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00011858112133721645
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 77,
+      "value": 0.6497721597198163,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 32,
+        "learning_rate": 0.00010116620711725506
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 78,
+      "value": 0.6425874221556892,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00020953344707898402
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 79,
+      "value": 0.7401210220387625,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00015228991255090214
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 80,
+      "value": 0.49994262412030527,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.00012948060455366878
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 81,
+      "value": 0.7658830691197966,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001005921340044375
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 82,
+      "value": 0.7381765496222362,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001143729397418056
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 83,
+      "value": 0.7176370062798212,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00018144617772911762
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 84,
+      "value": 0.7713286022472466,
+      "params": {
+        "memory_size": 2048,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00011254298659191921
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 85,
+      "value": 0.7181609603987387,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00014183496391390008
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 86,
+      "value": 0.7670636539374273,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00012846998528055499
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 87,
+      "value": 0.7154600349921381,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00016555110560839497
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 88,
+      "value": 0.4685730066871903,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0013549315094786604
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 89,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00982415483838011
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 90,
+      "value": 0.3454921085614,
+      "params": {
+        "memory_size": 128,
+        "memory_batch_size": 32,
+        "learning_rate": 0.0007500674029207068
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 91,
+      "value": 0.7755020705976168,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001534687038048326
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 92,
+      "value": 0.7658547652012011,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00011244256497121202
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 93,
+      "value": 0.771355544266691,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00015873750952023508
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 94,
+      "value": 0.7032099509383709,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0002505230042936108
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 95,
+      "value": 0.7593800852979309,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00012634284256050307
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 96,
+      "value": 0.09823499747856783,
+      "params": {
+        "memory_size": 256,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0069357513402209916
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 97,
+      "value": 0.7788515514226451,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.0001088470700929578
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 98,
+      "value": 0.5098104489776358,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 16,
+        "learning_rate": 0.0001381940741193386
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    },
+    {
+      "number": 99,
+      "value": 0.7525660680917652,
+      "params": {
+        "memory_size": 1024,
+        "memory_batch_size": 64,
+        "learning_rate": 0.00017497225749214706
+      },
+      "state": "2",
+      "std": null,
+      "all_accs": null
+    }
+  ]
+}

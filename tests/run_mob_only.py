@@ -369,15 +369,13 @@ class ExpertPoolLocal:
         """
         Evaluate using pseudo-label auction routing.
 
-        Uses the same bid formula as training but with pseudo-labels (model's own predictions)
-        instead of ground truth labels. This allows label-free routing at evaluation time.
+        Uses FORGET-COST ONLY for routing to avoid the "confidently wrong" problem
+        where an expert trained on different tasks predicts everything as its known
+        classes with high confidence, giving artificially low exec_cost.
 
-        Key insight: Expert that's already good at this data will have:
-        - Low exec_cost (low loss on its own predictions)
-        - Low forget_cost (small gradients = already settled on this data)
-        - Therefore LOW bid = WINS the auction
+        Expert with lowest forget_cost = their Fisher-protected knowledge is
+        most aligned with this data (gradients won't hurt their memory).
         """
-        import math
         all_labels = []
         winner_preds = []
         expert_selections = {i: 0 for i in range(self.num_experts)}
@@ -407,8 +405,6 @@ class ExpertPoolLocal:
 
                 # FORGET-COST ONLY routing: route to expert with lowest forget_cost
                 # This avoids the "confidently wrong" problem with pseudo-label exec_cost
-                # Expert with lowest forget_cost = their Fisher-protected knowledge is
-                # most aligned with this data (gradients won't hurt their memory)
                 batch_bids[i] = forget_cost
 
             # Route to expert with LOWEST bid (same as VCG auction)

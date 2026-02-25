@@ -1,0 +1,232 @@
+{
+  "seed": 42,
+  "device": "cuda",
+  "epochs_per_task": 4,
+  "batch_size": 32,
+  "results": [
+    {
+      "model_name": "MoB-TaskAware",
+      "accuracy": 0.7661201804876328,
+      "forgetting": 0.24716806869510335,
+      "task_accuracies": [
+        0.9990543735224586,
+        0.9906953966699314,
+        0.9994663820704376,
+        0.998992950654582,
+        0.9369641956631367
+      ],
+      "final_accuracies": [
+        0.9990543723106384,
+        0.019098922610282898,
+        0.9823905825614929,
+        0.9989929795265198,
+        0.8310640454292297
+      ],
+      "total_params": 1686568,
+      "trainable_params": 1686568,
+      "train_time_s": 88.97743940000146,
+      "train_vram_peak_mb": 54.79248046875,
+      "train_ram_peak_mb": 1248.40234375,
+      "train_throughput": 2697.3129550410063,
+      "train_flops": 190953627648,
+      "eval_time_s": 4.996895899999799,
+      "eval_vram_peak_mb": 49.99853515625,
+      "eval_throughput": 2001.2424113138723,
+      "eval_flops": 2671925760,
+      "total_wall_time_s": 93.97467350000079,
+      "final_peak_rss_mb": 1256.6796875
+    },
+    {
+      "model_name": "MoB-Online",
+      "accuracy": 0.5953,
+      "forgetting": 0.0,
+      "task_accuracies": [
+        0.9985815602836879,
+        0.0,
+        0.9994663820704376,
+        0.9909365558912386,
+        0.0
+      ],
+      "final_accuracies": [
+        0.9985815602836879,
+        0.0,
+        0.9994663820704376,
+        0.9909365558912386,
+        0.0
+      ],
+      "total_params": 1686568,
+      "trainable_params": 1686568,
+      "train_time_s": 101.76828849999947,
+      "train_vram_peak_mb": 55.14501953125,
+      "train_ram_peak_mb": 1373.0234375,
+      "train_throughput": 2358.2984791967024,
+      "train_flops": 190851840000,
+      "eval_time_s": 5.578904599999078,
+      "eval_vram_peak_mb": 53.48046875,
+      "eval_throughput": 1792.4665713053514,
+      "eval_flops": 2654961152,
+      "total_wall_time_s": 107.3474368999996,
+      "final_peak_rss_mb": 1373.0234375
+    },
+    {
+      "model_name": "GatedMoE+EWC",
+      "accuracy": 0.1986012223176658,
+      "forgetting": 0.0,
+      "task_accuracies": [
+        0.9900709390640259,
+        0.0019588638097047806,
+        0.0,
+        0.0005035246722400188,
+        0.0
+      ],
+      "final_accuracies": [
+        0.9905437231063843,
+        0.0019588638097047806,
+        0.0,
+        0.0005035246722400188,
+        0.0
+      ],
+      "total_params": 2090540,
+      "trainable_params": 2090540,
+      "train_time_s": 58.58702419999827,
+      "train_vram_peak_mb": 62.927734375,
+      "train_ram_peak_mb": 1330.41015625,
+      "train_throughput": 4098.655005590933,
+      "train_flops": 190953627648,
+      "eval_time_s": 3.301653200000146,
+      "eval_vram_peak_mb": 54.615234375,
+      "eval_throughput": 3028.7857004483562,
+      "eval_flops": 2671925760,
+      "total_wall_time_s": 61.88905529999829,
+      "final_peak_rss_mb": 1330.41015625
+    },
+    {
+      "model_name": "Monolithic+EWC",
+      "accuracy": 0.3733609439097577,
+      "forgetting": 0.681403690416161,
+      "task_accuracies": [
+        0.9995271867612293,
+        0.9329089128305583,
+        0.8938100320170758,
+        0.8927492447129909,
+        0.8734241048915784
+      ],
+      "final_accuracies": [
+        0.9933806146572104,
+        0.0,
+        0.0,
+        0.0,
+        0.8734241048915784
+      ],
+      "total_params": 1682954,
+      "trainable_params": 1682954,
+      "train_time_s": 46.62365950000094,
+      "train_vram_peak_mb": 95.705078125,
+      "train_ram_peak_mb": 1303.26953125,
+      "train_throughput": 5150.3464673337185,
+      "train_flops": 743367131136,
+      "eval_time_s": 1.7254740999997011,
+      "eval_vram_peak_mb": 67.2255859375,
+      "eval_throughput": 5795.508608330738,
+      "eval_flops": 10401592320,
+      "total_wall_time_s": 48.3494858999984,
+      "final_peak_rss_mb": 1303.2734375
+    },
+    {
+      "model_name": "A-GEM",
+      "accuracy": 0.75677518100703,
+      "forgetting": 0.30240015156793165,
+      "task_accuracies": [
+        0.9995271867612293,
+        1.0,
+        1.0,
+        0.999496475327291,
+        0.994452849218356
+      ],
+      "final_accuracies": [
+        0.7957446808510639,
+        0.7164544564152792,
+        0.6211312700106724,
+        0.6560926485397784,
+        0.994452849218356
+      ],
+      "total_params": 1682954,
+      "trainable_params": 1682954,
+      "train_time_s": 54.371490800000174,
+      "train_vram_peak_mb": 101.068359375,
+      "train_ram_peak_mb": 1308.265625,
+      "train_throughput": 4416.432149769181,
+      "train_flops": 743367131136,
+      "eval_time_s": 1.6980886999990616,
+      "eval_vram_peak_mb": 54.67919921875,
+      "eval_throughput": 5888.973879871838,
+      "eval_flops": 10401592320,
+      "total_wall_time_s": 56.06985999999961,
+      "final_peak_rss_mb": 1308.265625
+    },
+    {
+      "model_name": "ER",
+      "accuracy": 0.9747948673542938,
+      "forgetting": 0.027122240279709026,
+      "task_accuracies": [
+        0.9990543735224586,
+        0.9975514201762977,
+        0.9994663820704376,
+        0.9954682779456193,
+        0.9909228441754917
+      ],
+      "final_accuracies": [
+        0.9872340425531915,
+        0.9686581782566112,
+        0.9583778014941302,
+        0.9687814702920443,
+        0.9909228441754917
+      ],
+      "total_params": 1682954,
+      "trainable_params": 1682954,
+      "train_time_s": 46.60223810000025,
+      "train_vram_peak_mb": 72.2333984375,
+      "train_ram_peak_mb": 1312.61328125,
+      "train_throughput": 5152.713899378123,
+      "train_flops": 743367131136,
+      "eval_time_s": 1.7293333999987226,
+      "eval_vram_peak_mb": 54.3837890625,
+      "eval_throughput": 5782.574950560364,
+      "eval_flops": 10401592320,
+      "total_wall_time_s": 48.33276719999776,
+      "final_peak_rss_mb": 1312.61328125
+    },
+    {
+      "model_name": "PNN",
+      "accuracy": 0.7358,
+      "forgetting": 0.0,
+      "task_accuracies": [
+        0.9990543735224586,
+        0.9965719882468168,
+        1.0,
+        1.0,
+        0.9964699949571356
+      ],
+      "final_accuracies": [
+        0.9990543735224586,
+        0.9965719882468168,
+        1.0,
+        1.0,
+        0.9964699949571356
+      ],
+      "total_params": 6135642,
+      "trainable_params": 2032532,
+      "train_time_s": 57.742321900001116,
+      "train_vram_peak_mb": 91.9501953125,
+      "train_ram_peak_mb": 1313.33984375,
+      "train_throughput": 4158.613510829314,
+      "train_flops": 3327217410048,
+      "eval_time_s": 7.859412399997382,
+      "eval_vram_peak_mb": 75.6572265625,
+      "eval_throughput": 1272.3597504570864,
+      "eval_flops": 46556213760,
+      "total_wall_time_s": 65.60210630000074,
+      "final_peak_rss_mb": 1313.33984375
+    }
+  ]
+}

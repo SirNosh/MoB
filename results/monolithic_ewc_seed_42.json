@@ -1,0 +1,33 @@
+{
+  "seed": 42,
+  "config": {
+    "num_tasks": 5,
+    "num_experts": 4,
+    "width_multiplier": 2,
+    "lambda_ewc": 10.0,
+    "learning_rate": 0.001,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4
+  },
+  "task_accuracies": [
+    0.9995271867612293,
+    0.9970617042115573,
+    1.0,
+    0.999496475327291,
+    0.9949571356530509
+  ],
+  "final_accuracies": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.9949571356530509
+  ],
+  "avg_accuracy": 0.1989914271306102,
+  "forgetting": 0.9990213415750194,
+  "param_counts": {
+    "total_params": 1682954,
+    "trainable_params": 1682954
+  }
+}

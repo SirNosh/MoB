@@ -1,0 +1,49 @@
+{
+  "seed": 42,
+  "config": {
+    "num_tasks": 5,
+    "max_columns": -1,
+    "learning_rate": 0.001,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4
+  },
+  "task_accuracies": [
+    0.9995271867612293,
+    0.9985308521057786,
+    1.0,
+    1.0,
+    0.9949571356530509
+  ],
+  "final_accuracies": [
+    0.9995271867612293,
+    0.9985308521057786,
+    1.0,
+    1.0,
+    0.9949571356530509
+  ],
+  "avg_accuracy_oracle": 0.9986030349040117,
+  "avg_accuracy_agnostic": 0.6742,
+  "forgetting": 0.0,
+  "param_counts": {
+    "total_params": 6135642,
+    "frozen_params": 4103110,
+    "trainable_params": 2032532,
+    "num_columns": 5,
+    "max_columns": -1,
+    "per_column_params": [
+      421642,
+      824468,
+      1227156,
+      1629844,
+      2032532
+    ]
+  },
+  "column_selections": {
+    "0": 2249,
+    "1": 1016,
+    "2": 3444,
+    "3": 2561,
+    "4": 730
+  }
+}
