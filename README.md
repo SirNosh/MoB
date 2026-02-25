@@ -26,7 +26,7 @@
 
 ---
 
-## What is MoB? (Plain English Introduction)
+## What is MoB?
 
 Imagine you're running a company with multiple specialist employees. When a new project comes in, instead of assigning it to someone randomly or having a single manager decide (who might forget who's good at what), you hold an auction. Each specialist bids based on two things:
 
