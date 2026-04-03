@@ -52,6 +52,7 @@ def run_continual_experiment(train_tasks, test_tasks, config):
         'use_conscience': config.get('use_conscience', False),
         'conscience_rate': config.get('conscience_rate', 0.01),
         'conscience_decay': config.get('conscience_decay', 0.999),
+        'seed_idle_prototypes': config.get('seed_idle_prototypes', False),
         'dropout': 0.5
     }
 
@@ -522,6 +523,8 @@ def main():
                         help='Conscience bias update rate (default: 0.01)')
     parser.add_argument('--conscience_decay', type=float, default=0.999,
                         help='Conscience bias decay factor (default: 0.999)')
+    parser.add_argument('--seed_idle_prototypes', action='store_true',
+                        help='Seed prototype stores for idle experts at prototype-routing switch')
 
     args = parser.parse_args()
     set_seed(args.seed)
@@ -551,7 +554,8 @@ def main():
         'train_routing_warmup': args.train_routing_warmup,
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,
-        'conscience_decay': args.conscience_decay
+        'conscience_decay': args.conscience_decay,
+        'seed_idle_prototypes': args.seed_idle_prototypes
     }
 
     print("Creating datasets...")

@@ -350,6 +350,9 @@ class ExpertPoolLocal:
         self.use_conscience = expert_config.get('use_conscience', False)
         self.conscience_rate = expert_config.get('conscience_rate', 0.01)
         self.conscience_decay = expert_config.get('conscience_decay', 0.999)
+        self.seed_idle_prototypes_enabled = expert_config.get('seed_idle_prototypes', False)
+        self._prototypes_seeded = False
+        self._latest_batch = None
 
         # Create LOCAL experts (not the original MoBExpert)
         self.experts: List[MoBExpertLocal] = []
@@ -377,6 +380,47 @@ class ExpertPoolLocal:
             )
             self.experts.append(expert)
 
+    def _expert_has_prototypes(self, expert: MoBExpertLocal) -> bool:
+        return (
+            expert.prototype_store is not None
+            and len(expert.prototype_store.centroids) > 0
+        )
+
+    def seed_idle_prototypes(self, x: torch.Tensor = None, y: torch.Tensor = None) -> int:
+        """Seed prototypes for experts that are still idle (no centroids)."""
+        if x is None or y is None:
+            if self._latest_batch is None:
+                return 0
+            x, y = self._latest_batch
+
+        x_device = x.to(self.device)
+        seeded = 0
+
+        for expert in self.experts:
+            if self._expert_has_prototypes(expert):
+                continue
+            if not hasattr(expert.model, 'forward_features'):
+                continue
+
+            was_training = expert.model.training
+            expert.model.eval()
+            with torch.no_grad():
+                features, logits = expert.model.forward_features(x_device)
+                pseudo_labels = logits.argmax(dim=-1).detach()
+            if was_training:
+                expert.model.train()
+
+            if expert.prototype_store is None:
+                expert.prototype_store = PrototypeStore(
+                    feature_dim=features.shape[1],
+                    device=self.device
+                )
+
+            expert.prototype_store.update(features.detach(), pseudo_labels)
+            seeded += 1
+
+        return seeded
+
     def collect_bids(self, x: torch.Tensor, y: torch.Tensor,
                      train_routing: str = 'label') -> Tuple[np.ndarray, List[Dict]]:
         """Collect bids from all experts.
@@ -387,16 +431,22 @@ class ExpertPoolLocal:
         import math
 
         if train_routing == 'prototype':
+            if self.seed_idle_prototypes_enabled and not self._prototypes_seeded:
+                idle_exists = any(not self._expert_has_prototypes(expert) for expert in self.experts)
+                if idle_exists:
+                    seeded_count = self.seed_idle_prototypes()
+                    if seeded_count == 0:
+                        seeded_count = self.seed_idle_prototypes(x, y)
+                    if seeded_count > 0:
+                        print(f"[Prototype Seeding] Seeded {seeded_count} idle experts")
+                    self._prototypes_seeded = True
+
             bids = np.zeros(self.num_experts)
             components = []
             for i, expert in enumerate(self.experts):
                 expert.total_batches_seen += 1
 
-                has_prototypes = (
-                    expert.prototype_store is not None
-                    and len(expert.prototype_store.centroids) > 0
-                    and hasattr(expert.model, 'forward_features')
-                )
+                has_prototypes = self._expert_has_prototypes(expert) and hasattr(expert.model, 'forward_features')
 
                 # Get features and logits
                 expert.model.eval()
@@ -456,6 +506,7 @@ class ExpertPoolLocal:
     def train_winner(self, winner_id: int, x: torch.Tensor, y: torch.Tensor,
                      optimizers: List[torch.optim.Optimizer]) -> Dict:
         """Train the winning expert."""
+        self._latest_batch = (x, y)
         metrics = self.experts[winner_id].train_on_batch(x, y, optimizers[winner_id])
         self.update_conscience_bias(winner_id)
         return metrics
@@ -723,6 +774,7 @@ def run_experiment(train_tasks, test_tasks, config):
         'use_conscience': config.get('use_conscience', False),
         'conscience_rate': config.get('conscience_rate', 0.01),
         'conscience_decay': config.get('conscience_decay', 0.999),
+        'seed_idle_prototypes': config.get('seed_idle_prototypes', False),
         'dropout': 0.5
     }
 
@@ -1058,6 +1110,8 @@ def main():
                         help='Conscience bias update rate (default: 0.01)')
     parser.add_argument('--conscience_decay', type=float, default=0.999,
                         help='Conscience bias decay factor (default: 0.999)')
+    parser.add_argument('--seed_idle_prototypes', action='store_true',
+                        help='Seed prototype stores for idle experts at prototype-routing switch')
 
     args = parser.parse_args()
 
@@ -1093,6 +1147,7 @@ def main():
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,
         'conscience_decay': args.conscience_decay,
+        'seed_idle_prototypes': args.seed_idle_prototypes,
     }
 
     print("="*70)

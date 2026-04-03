@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .expert import MoBExpert
 from .models import create_model
+from .prototype_store import PrototypeStore
 
 
 class ShiftDetector:
@@ -105,6 +106,9 @@ class ExpertPool:
         self.use_conscience = expert_config.get('use_conscience', False)
         self.conscience_rate = expert_config.get('conscience_rate', 0.01)
         self.conscience_decay = expert_config.get('conscience_decay', 0.999)
+        self.seed_idle_prototypes_enabled = expert_config.get('seed_idle_prototypes', False)
+        self._prototypes_seeded = False
+        self._latest_batch: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
 
         # Create experts
         for i in range(num_experts):
@@ -119,6 +123,54 @@ class ExpertPool:
                 device=self.device
             )
             self.experts.append(expert)
+
+    def _expert_has_prototypes(self, expert: MoBExpert) -> bool:
+        return (
+            expert.prototype_store is not None
+            and len(expert.prototype_store.centroids) > 0
+        )
+
+    def seed_idle_prototypes(
+        self,
+        x: Optional[torch.Tensor] = None,
+        y: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Seed prototype stores for experts that do not have prototypes yet.
+        Uses pseudo-labels from each expert's own logits on the provided batch.
+        """
+        if x is None or y is None:
+            if self._latest_batch is None:
+                return 0
+            x, y = self._latest_batch
+
+        x_device = x.to(self.device)
+        seeded = 0
+
+        for expert in self.experts:
+            if self._expert_has_prototypes(expert):
+                continue
+            if not hasattr(expert.model, 'forward_features'):
+                continue
+
+            was_training = expert.model.training
+            expert.model.eval()
+            with torch.no_grad():
+                features, logits = expert.model.forward_features(x_device)
+                pseudo_labels = logits.argmax(dim=-1).detach()
+            if was_training:
+                expert.model.train()
+
+            if expert.prototype_store is None:
+                expert.prototype_store = PrototypeStore(
+                    feature_dim=features.shape[1],
+                    device=self.device
+                )
+
+            expert.prototype_store.update(features.detach(), pseudo_labels)
+            seeded += 1
+
+        return seeded
 
     def _create_expert_model(self, config: Dict) -> nn.Module:
         """
@@ -155,17 +207,23 @@ class ExpertPool:
 
         if train_routing == 'prototype':
             # Experiment 3: Prototype-distance-based training routing
+            if self.seed_idle_prototypes_enabled and not self._prototypes_seeded:
+                idle_exists = any(not self._expert_has_prototypes(expert) for expert in self.experts)
+                if idle_exists:
+                    seeded_count = self.seed_idle_prototypes()
+                    if seeded_count == 0:
+                        seeded_count = self.seed_idle_prototypes(x, y)
+                    if seeded_count > 0:
+                        print(f"[Prototype Seeding] Seeded {seeded_count} idle experts")
+                    self._prototypes_seeded = True
+
             bids = np.zeros(self.num_experts)
             components = []
             for i, expert in enumerate(self.experts):
                 expert.total_batches_seen += 1
 
                 # Check if prototype routing is available for this expert
-                has_prototypes = (
-                    expert.prototype_store is not None
-                    and len(expert.prototype_store.centroids) > 0
-                    and hasattr(expert.model, 'forward_features')
-                )
+                has_prototypes = self._expert_has_prototypes(expert) and hasattr(expert.model, 'forward_features')
 
                 # Get features and logits
                 expert.model.eval()
@@ -277,6 +335,7 @@ class ExpertPool:
         Train the winning expert on the batch.
         """
         winner = self.experts[winner_id]
+        self._latest_batch = (x, y)
 
         # Check for distribution shift BEFORE training
         shift_detected = False

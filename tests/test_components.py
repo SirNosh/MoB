@@ -425,6 +425,93 @@ def test_conscience_params_configurable():
         "Higher conscience_rate should produce larger bias magnitude"
 
 
+def _has_prototypes(expert):
+    return expert.prototype_store is not None and len(expert.prototype_store.centroids) > 0
+
+
+def test_prototype_seeding_creates_prototypes():
+    """Seeding should create prototypes for all experts."""
+    from contibualmob.pool import ExpertPool
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'seed_idle_prototypes': True
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+
+    x = torch.randn(8, 1, 28, 28)
+    y = torch.randint(0, 10, (8,))
+    optimizers = [torch.optim.Adam(expert.model.parameters(), lr=0.001) for expert in pool.experts]
+
+    # Train one expert so others remain idle.
+    pool.train_winner(0, x, y, optimizers)
+    assert _has_prototypes(pool.experts[0])
+    assert any(not _has_prototypes(expert) for expert in pool.experts[1:])
+
+    pool.seed_idle_prototypes(x, y)
+
+    assert all(_has_prototypes(expert) for expert in pool.experts), \
+        "All experts should have prototypes after seeding"
+
+
+def test_seeding_removes_default_distance():
+    """After seeding, prototype routing should not use the 100.0 default distance."""
+    from contibualmob.pool import ExpertPool
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'seed_idle_prototypes': True
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+
+    x = torch.randn(8, 1, 28, 28)
+    y = torch.randint(0, 10, (8,))
+    optimizers = [torch.optim.Adam(expert.model.parameters(), lr=0.001) for expert in pool.experts]
+
+    pool.train_winner(0, x, y, optimizers)
+    pool.seed_idle_prototypes(x, y)
+
+    _, components = pool.collect_bids(x, y, train_routing='prototype')
+    assert all(comp['exec_cost'] != 100.0 for comp in components), \
+        "No expert should use the default 100.0 distance after seeding"
+
+
+def test_seeding_backward_compat():
+    """When seed_idle_prototypes is disabled, idle experts should still use distance 100.0."""
+    from contibualmob.pool import ExpertPool
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'seed_idle_prototypes': False
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+
+    x = torch.randn(8, 1, 28, 28)
+    y = torch.randint(0, 10, (8,))
+    optimizers = [torch.optim.Adam(expert.model.parameters(), lr=0.001) for expert in pool.experts]
+
+    pool.train_winner(0, x, y, optimizers)
+    _, components = pool.collect_bids(x, y, train_routing='prototype')
+
+    assert any(comp['exec_cost'] == 100.0 for comp in components), \
+        "Backward compatibility requires idle experts to keep default distance 100.0 when seeding is disabled"
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
