@@ -179,7 +179,8 @@ def test_expert():
         model=model,
         alpha=0.6,
         beta=0.4,
-        lambda_ewc=1000
+        lambda_ewc=1000,
+        forgetting_cost_scale=1.0
     )
 
     # Test bidding
