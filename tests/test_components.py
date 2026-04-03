@@ -609,6 +609,55 @@ def test_temperature_backward_compat():
     assert eval_pool.current_temperature == 5.0, "Eval routing should not decay temperature"
 
 
+def test_combined_mechanisms():
+    """Conscience + seeding + temperature should work together with valid routing behavior."""
+    from contibualmob.pool import ExpertPool
+
+    np.random.seed(7)
+    torch.manual_seed(7)
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'use_conscience': True,
+        'conscience_rate': 0.1,
+        'conscience_decay': 1.0,
+        'seed_idle_prototypes': True,
+        'routing_temperature': 3.0,
+        'temp_decay': 0.98,
+        'temp_min': 0.05
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+    optimizers = [torch.optim.Adam(expert.model.parameters(), lr=0.001) for expert in pool.experts]
+
+    x = torch.randn(8, 1, 28, 28)
+    y = torch.randint(0, 10, (8,))
+
+    wins = np.zeros(4, dtype=int)
+    for _ in range(50):
+        bids, components = pool.collect_bids(x, y, train_routing='prototype')
+        assert np.isfinite(bids).all(), "Combined mechanisms should produce finite bids"
+        assert all(np.isfinite(comp['bid']) for comp in components), "Component bids should be finite"
+
+        winner = pool.select_winner(bids, train_routing='prototype', is_training=True)
+        metrics = pool.train_winner(winner, x, y, optimizers)
+        wins[winner] += 1
+
+        assert np.isfinite(metrics['total_loss']), "Training loss should remain finite"
+
+    assert all(_has_prototypes(expert) for expert in pool.experts), \
+        "Seeding should ensure all experts have prototypes in combined mode"
+    assert pool.total_auctions == 50, "Conscience should update after each training auction"
+    assert pool.current_temperature <= 3.0 and pool.current_temperature >= 0.05
+    assert wins.sum() == 50
+    assert np.count_nonzero(wins) >= 2, "Combined mechanisms should avoid single-expert monopoly"
+    assert wins.max() / wins.sum() < 0.95, "Routing distribution should remain reasonably spread"
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)

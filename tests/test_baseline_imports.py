@@ -73,7 +73,8 @@ def test_monolithic_ewc_instantiation():
     model = create_model('simple_cnn', num_classes=10, input_channels=1)
     baseline = MonolithicEWC(model, lambda_ewc=5000)
 
-    assert baseline.expert is not None
+    assert baseline.model is not None
+    assert baseline.ewc_estimator is not None
     print(f"✓ Monolithic EWC instantiated")
     return True
 
@@ -137,7 +138,7 @@ def test_forward_passes():
     model = create_model('simple_cnn', num_classes=10, input_channels=1)
     mono = MonolithicEWC(model, lambda_ewc=1000)
     with torch.no_grad():
-        logits = mono.expert.model(x)
+        logits = mono.model(x)
     assert logits.shape == (4, 10)
     print("✓ Monolithic EWC forward pass works")
 

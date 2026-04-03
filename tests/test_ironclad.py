@@ -10,7 +10,7 @@ Tests:
 3. EWC penalty applied during training
 4. Parameter capacity equality across baselines
 5. Model device placement (CPU/GPU)
-6. Auction correctness (VCG properties)
+6. Auction correctness (auction properties)
 """
 
 import torch
@@ -26,7 +26,7 @@ import random
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from mob import (
-    PerBatchVCGAuction,
+    PerBatchAuction,
     ExpertPool,
     create_model,
     MoBExpert,
@@ -196,6 +196,7 @@ def test_ewc_fisher_nonzero():
         alpha=1.0,
         beta=0.0,
         lambda_ewc=5000,
+        forgetting_cost_scale=1.0,
         device=device
     )
 
@@ -293,8 +294,15 @@ def test_ewc_penalty_applied():
     for x, y in train_tasks[0]:
         x = x.to(device)
         y = y.to(device)
-        metrics = baseline.expert.train_on_batch(x, y, optimizer)
-        task0_penalties.append(metrics['ewc_penalty'])
+        baseline.model.train()
+        optimizer.zero_grad()
+        logits = baseline.model(x)
+        task_loss = torch.nn.functional.cross_entropy(logits, y)
+        ewc_penalty = baseline.ewc_estimator.penalty()
+        total_loss = task_loss + ewc_penalty
+        total_loss.backward()
+        optimizer.step()
+        task0_penalties.append(float(ewc_penalty.item()))
 
         batch_count += 1
         if batch_count >= 50:
@@ -315,8 +323,15 @@ def test_ewc_penalty_applied():
     for x, y in train_tasks[1]:
         x = x.to(device)
         y = y.to(device)
-        metrics = baseline.expert.train_on_batch(x, y, optimizer)
-        task1_penalties.append(metrics['ewc_penalty'])
+        baseline.model.train()
+        optimizer.zero_grad()
+        logits = baseline.model(x)
+        task_loss = torch.nn.functional.cross_entropy(logits, y)
+        ewc_penalty = baseline.ewc_estimator.penalty()
+        total_loss = task_loss + ewc_penalty
+        total_loss.backward()
+        optimizer.step()
+        task1_penalties.append(float(ewc_penalty.item()))
 
         batch_count += 1
         if batch_count >= 50:
@@ -517,19 +532,19 @@ def test_model_device_placement():
 
 def test_auction_correctness():
     """
-    Test 6: Verify VCG auction implements correct properties.
+    Test 6: Verify auction implements correct properties.
 
     Ensures that:
     - Winner is the expert with lowest bid
-    - Payment is second-lowest bid (VCG property)
+    - Payment is second-lowest bid (auction property)
     - Auction is deterministic given same bids
     """
     print("\n" + "="*70)
-    print("TEST 6: Auction Correctness (VCG Properties)")
+    print("TEST 6: Auction Correctness (Auction Properties)")
     print("="*70)
 
     num_experts = 4
-    auction = PerBatchVCGAuction(num_experts=num_experts)
+    auction = PerBatchAuction(num_experts=num_experts)
 
     all_passed = True
 
@@ -547,8 +562,8 @@ def test_auction_correctness():
     else:
         print(f"✓ Winner is lowest bidder")
 
-    # Test 6b: Payment is second-lowest bid (VCG property)
-    print("\n--- Test 6b: VCG Payment ---")
+    # Test 6b: Payment is second-lowest bid (auction property)
+    print("\n--- Test 6b: Auction Payment ---")
     sorted_bids = np.sort(bids)
     expected_payment = sorted_bids[1]  # Second lowest
 
@@ -560,7 +575,7 @@ def test_auction_correctness():
         print(f"✗ FAIL: Wrong payment! Expected {expected_payment}, got {payment}")
         all_passed = False
     else:
-        print(f"✓ Payment is second-lowest bid (VCG property satisfied)")
+        print(f"✓ Payment is second-lowest bid (auction property satisfied)")
 
     # Test 6c: Deterministic behavior
     print("\n--- Test 6c: Deterministic Behavior ---")
@@ -574,14 +589,14 @@ def test_auction_correctness():
 
     # Test 6d: Truthful bidding is optimal (incentive compatibility)
     print("\n--- Test 6d: Incentive Compatibility (Conceptual) ---")
-    print("VCG mechanism properties:")
+    print("Auction mechanism properties:")
     print("  ✓ Second-price auction")
     print("  ✓ Winner pays second-lowest bid")
     print("  ✓ Dominant-strategy incentive-compatible (DSIC)")
     print("  → Truthful bidding maximizes utility")
 
     if all_passed:
-        print("\n✓ TEST 6 PASSED: Auction implements VCG correctly")
+        print("\n✓ TEST 6 PASSED: Auction implements auction correctly")
     else:
         print("\n✗ TEST 6 FAILED: Auction implementation issues")
 
