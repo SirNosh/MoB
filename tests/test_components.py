@@ -8,6 +8,7 @@ import sys
 import os
 import torch
 import numpy as np
+import types
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,7 +20,7 @@ def test_imports():
 
     try:
         from mob import (
-            PerBatchVCGAuction,
+            PerBatchAuction,
             SealedBidProtocol,
             create_commitment,
             ExecutionCostEstimator,
@@ -39,13 +40,13 @@ def test_imports():
 
 
 def test_auction():
-    """Test VCG auction mechanism."""
-    print("\nTesting VCG Auction...")
+    """Test auction mechanism."""
+    print("\nTesting Auction...")
 
-    from mob import PerBatchVCGAuction
+    from mob import PerBatchAuction
 
     num_experts = 4
-    auction = PerBatchVCGAuction(num_experts)
+    auction = PerBatchAuction(num_experts)
 
     # Test auction with sample bids
     bids = np.array([0.5, 0.3, 0.7, 0.4])
@@ -271,7 +272,7 @@ def test_integration():
     """Test full integration of components."""
     print("\nTesting Full Integration...")
 
-    from mob import ExpertPool, PerBatchVCGAuction
+    from mob import ExpertPool, PerBatchAuction
 
     # Setup
     expert_config = {
@@ -285,7 +286,7 @@ def test_integration():
 
     num_experts = 4
     pool = ExpertPool(num_experts, expert_config)
-    auction = PerBatchVCGAuction(num_experts)
+    auction = PerBatchAuction(num_experts)
 
     optimizers = [
         torch.optim.Adam(expert.model.parameters(), lr=0.001)
@@ -314,6 +315,116 @@ def test_integration():
     return True
 
 
+def test_conscience_bias_reduces_imbalance():
+    """Conscience bias should penalize frequent winners and allow others to win."""
+    from contibualmob.pool import ExpertPool
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 1.0,
+        'beta': 0.0,
+        'lambda_ewc': 1.0,
+        'use_conscience': True,
+        'conscience_rate': 0.5,
+        'conscience_decay': 1.0
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+
+    raw_bids = [0.1, 0.2, 0.3, 0.4]
+    for i, expert in enumerate(pool.experts):
+        def _fixed_bid(self, x, y, _rb=raw_bids[i]):
+            return _rb, {
+                'exec_cost': _rb,
+                'forget_cost': 0.0,
+                'norm_exec_cost': _rb,
+                'norm_forget_cost': 0.0,
+                'bid': _rb,
+                'alpha': 1.0,
+                'beta': 0.0
+            }
+        expert.compute_bid = types.MethodType(_fixed_bid, expert)
+
+    x = torch.randn(2, 1, 28, 28)
+    y = torch.randint(0, 10, (2,))
+
+    wins = np.zeros(4, dtype=int)
+    for _ in range(100):
+        bids, _ = pool.collect_bids(x, y, train_routing='label')
+        winner = int(np.argmin(bids))
+        wins[winner] += 1
+        pool.update_conscience_bias(winner)
+
+    assert wins[0] < 100, "Conscience bias should prevent expert 0 from winning all auctions"
+    assert wins[1:].sum() > 0, "Other experts should win at least some auctions with conscience enabled"
+
+    final_bids, _ = pool.collect_bids(x, y, train_routing='label')
+    assert final_bids[0] > raw_bids[0], "Conscience should increase expert 0 adjusted bid after frequent wins"
+
+
+def test_conscience_backward_compat():
+    """When conscience is disabled, load_bias must not affect bids."""
+    from contibualmob.pool import ExpertPool
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 1.0,
+        'beta': 0.0,
+        'lambda_ewc': 1.0,
+        'use_conscience': False
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+    pool.load_bias = np.array([10.0, -10.0, 5.0, -5.0], dtype=float)
+
+    raw_bids = [0.15, 0.25, 0.35, 0.45]
+    for i, expert in enumerate(pool.experts):
+        def _fixed_bid(self, x, y, _rb=raw_bids[i]):
+            return _rb, {
+                'exec_cost': _rb,
+                'forget_cost': 0.0,
+                'norm_exec_cost': _rb,
+                'norm_forget_cost': 0.0,
+                'bid': _rb,
+                'alpha': 1.0,
+                'beta': 0.0
+            }
+        expert.compute_bid = types.MethodType(_fixed_bid, expert)
+
+    x = torch.randn(2, 1, 28, 28)
+    y = torch.randint(0, 10, (2,))
+
+    bids, _ = pool.collect_bids(x, y, train_routing='label')
+    assert np.allclose(bids, np.array(raw_bids)), "Bids must remain raw values when conscience is disabled"
+
+
+def test_conscience_params_configurable():
+    """Different conscience rates should produce different bias magnitudes."""
+    from contibualmob.pool import ExpertPool
+
+    common = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'use_conscience': True,
+        'conscience_decay': 1.0
+    }
+    slow = ExpertPool(num_experts=4, expert_config={**common, 'conscience_rate': 0.01})
+    fast = ExpertPool(num_experts=4, expert_config={**common, 'conscience_rate': 0.5})
+
+    for _ in range(20):
+        slow.update_conscience_bias(0)
+        fast.update_conscience_bias(0)
+
+    assert abs(fast.load_bias[0]) > abs(slow.load_bias[0]), \
+        "Higher conscience_rate should produce larger bias magnitude"
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -322,7 +433,7 @@ def run_all_tests():
 
     tests = [
         ("Imports", test_imports),
-        ("VCG Auction", test_auction),
+        ("Auction", test_auction),
         ("Sealed Bid Protocol", test_sealed_bid),
         ("Model Architectures", test_models),
         ("Bidding Components", test_bidding),

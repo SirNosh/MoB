@@ -99,6 +99,12 @@ class ExpertPool:
         self.learning_rate = learning_rate
         self.global_batch_idx = 0  # Track global batch index
         # =====================================================================
+        self.load_bias = np.zeros(num_experts)
+        self.expert_win_counts = np.zeros(num_experts)
+        self.total_auctions = 0
+        self.use_conscience = expert_config.get('use_conscience', False)
+        self.conscience_rate = expert_config.get('conscience_rate', 0.01)
+        self.conscience_decay = expert_config.get('conscience_decay', 0.999)
 
         # Create experts
         for i in range(num_experts):
@@ -130,21 +136,112 @@ class ExpertPool:
     def collect_bids(
         self,
         x: torch.Tensor,
-        y: torch.Tensor
+        y: torch.Tensor,
+        train_routing: str = 'label'
     ) -> Tuple[np.ndarray, List[Dict]]:
         """
         Gathers bids from all experts for a given batch.
-        
+
+        Args:
+            x: Input batch.
+            y: Labels (used for label-based routing and training loss).
+            train_routing: 'label' (default, uses exec_cost with true y) or
+                           'prototype' (uses prototype distance instead of exec_cost).
+
         Each expert uses its own Z-Score normalization based on running statistics,
-        which preserves VCG independence (each bid depends only on the expert's own history).
+        which preserves bid independence (each bid depends only on the expert's own history).
         """
-        bids = np.zeros(self.num_experts)
-        components = []
-        for i, expert in enumerate(self.experts):
-            bid, comp = expert.compute_bid(x, y)
-            bids[i] = bid
-            components.append(comp)
-        return bids, components
+        import math
+
+        if train_routing == 'prototype':
+            # Experiment 3: Prototype-distance-based training routing
+            bids = np.zeros(self.num_experts)
+            components = []
+            for i, expert in enumerate(self.experts):
+                expert.total_batches_seen += 1
+
+                # Check if prototype routing is available for this expert
+                has_prototypes = (
+                    expert.prototype_store is not None
+                    and len(expert.prototype_store.centroids) > 0
+                    and hasattr(expert.model, 'forward_features')
+                )
+
+                # Get features and logits
+                expert.model.eval()
+                with torch.no_grad():
+                    if hasattr(expert.model, 'forward_features'):
+                        features, logits = expert.model.forward_features(x.to(self.device))
+                    else:
+                        logits = expert.model(x.to(self.device))
+                        features = None
+                expert.model.train()
+
+                if has_prototypes and features is not None:
+                    distance_score = expert.prototype_store.compute_routing_score(features)
+                    routing_tag = 'prototype'
+                else:
+                    distance_score = 100.0
+                    routing_tag = 'prototype_default'
+
+                pseudo_labels = logits.argmax(dim=-1).detach()
+                raw_forget = expert.forget_estimator.compute_forgetting_cost(
+                    x.to(self.device), pseudo_labels
+                )
+
+                norm_distance = distance_score / 10.0
+                norm_forget = math.log1p(raw_forget) / 10.0
+                bid = expert.alpha * norm_distance + expert.beta * norm_forget
+
+                if self.use_conscience:
+                    adjusted_bid = bid + self.load_bias[i]
+                    comp_bid = adjusted_bid
+                else:
+                    comp_bid = bid
+
+                comp = {
+                    'exec_cost': distance_score,
+                    'forget_cost': raw_forget,
+                    'norm_exec_cost': norm_distance,
+                    'norm_forget_cost': norm_forget,
+                    'bid': comp_bid,
+                    'alpha': expert.alpha,
+                    'beta': expert.beta,
+                    'routing': routing_tag
+                }
+
+                bids[i] = comp_bid
+                components.append(comp)
+            return bids, components
+        else:
+            # Default: label-based routing
+            bids = np.zeros(self.num_experts)
+            components = []
+            for i, expert in enumerate(self.experts):
+                bid, comp = expert.compute_bid(x, y)
+                if self.use_conscience:
+                    adjusted_bid = bid + self.load_bias[i]
+                    comp['bid'] = adjusted_bid
+                    bids[i] = adjusted_bid
+                else:
+                    bids[i] = bid
+                components.append(comp)
+            return bids, components
+
+    def update_conscience_bias(self, winner_id: int):
+        """Update per-expert load-balancing bias after each auction."""
+        if not self.use_conscience:
+            return
+
+        self.total_auctions += 1
+        self.expert_win_counts[winner_id] += 1
+
+        target_freq = 1.0 / self.num_experts
+        for i in range(self.num_experts):
+            actual_freq = self.expert_win_counts[i] / self.total_auctions
+            self.load_bias[i] += self.conscience_rate * (actual_freq - target_freq)
+
+        self.load_bias *= self.conscience_decay
 
     def _should_reset_optimizer_on_shift(self, expert, shift_detected: bool) -> bool:
         """
@@ -214,6 +311,7 @@ class ExpertPool:
         # Update tracking for optimizer reset logic
         winner.last_won_global_batch = self.global_batch_idx
         self.global_batch_idx += 1
+        self.update_conscience_bias(winner_id)
 
         return metrics
 
@@ -237,24 +335,24 @@ class ExpertPool:
 
     def evaluate_all(
         self,
-        dataloader: torch.utils.data.DataLoader
+        dataloader: torch.utils.data.DataLoader,
+        routing_strategy: str = 'pseudo_label'
     ) -> Dict:
         """
-        Evaluates the MoB system using pseudo-label auction routing.
+        Evaluates the MoB system using auction-based routing.
 
-        IMPORTANT: This method does NOT use ground truth labels for routing.
-        Instead, it uses pseudo-labels (model's own predictions) to compute
-        bids, then routes to the expert with lowest bid.
+        Args:
+            dataloader: Test data loader.
+            routing_strategy: 'pseudo_label' (default) or 'prototype' (feature-distance).
 
-        Key insight: Expert that's already good at this data will have:
-        - Low exec_cost (low loss on its own predictions)
-        - Low forget_cost (small gradients = already settled on this data)
-        - Therefore LOW bid = WINS the auction
+        IMPORTANT: Neither strategy uses ground truth labels for routing.
         """
         import math
         results = {}
         all_labels = []
         winner_preds = []
+
+        use_prototype = (routing_strategy == 'prototype')
 
         # 1. Calculate individual expert accuracies (for diagnostics)
         for i, expert in enumerate(self.experts):
@@ -271,7 +369,7 @@ class ExpertPool:
             accuracy = correct / total if total > 0 else 0.0
             results[f'expert_{i}_accuracy'] = accuracy
 
-        # 2. Calculate MoB accuracy using PSEUDO-LABEL AUCTION routing (no ground truth labels!)
+        # 2. Calculate MoB accuracy using auction routing (no ground truth labels!)
         for x, y in dataloader:
             x_device = x.to(self.device)
             y_device = y.to(self.device)
@@ -280,34 +378,46 @@ class ExpertPool:
             batch_bids = np.zeros(self.num_experts)
             batch_logits = []
 
-            # Compute logits and bids for all experts using pseudo-labels
             for i, expert in enumerate(self.experts):
                 expert.model.eval()
                 with torch.no_grad():
-                    logits = expert.model(x_device)
+                    if use_prototype and hasattr(expert.model, 'forward_features'):
+                        features, logits = expert.model.forward_features(x_device)
+                    else:
+                        logits = expert.model(x_device)
+                        features = None
                     batch_logits.append(logits)
 
-                # Use pseudo-labels (model's own predictions) instead of ground truth
-                pseudo_labels = logits.argmax(dim=-1).detach()
+                if use_prototype and expert.prototype_store is not None and features is not None:
+                    # Prototype distance replaces exec_cost
+                    distance_score = expert.prototype_store.compute_routing_score(features)
 
-                # Compute execution cost with pseudo-labels
-                raw_exec = F.cross_entropy(logits, pseudo_labels).item()
+                    # Keep forget cost (still useful signal)
+                    pseudo_labels = logits.argmax(dim=-1).detach()
+                    forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
 
-                # Compute forgetting cost with pseudo-labels
-                forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
+                    # Bid: distance replaces exec_cost
+                    # distance_score typically ranges 0-20; normalize to ~0-1
+                    norm_distance = distance_score / 10.0
+                    norm_forget = math.log1p(forget_cost) / 10.0
+                    batch_bids[i] = expert.alpha * norm_distance + expert.beta * norm_forget
+                else:
+                    # Pseudo-label routing (original)
+                    pseudo_labels = logits.argmax(dim=-1).detach()
+                    raw_exec = F.cross_entropy(logits, pseudo_labels).item()
+                    forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
 
-                # Same bid formula as training
-                norm_exec = raw_exec / 2.5
-                norm_forget = math.log1p(forget_cost) / 10.0
-                bid = expert.alpha * norm_exec + expert.beta * norm_forget
-                batch_bids[i] = bid
+                    norm_exec = raw_exec / 2.5
+                    norm_forget = math.log1p(forget_cost) / 10.0
+                    batch_bids[i] = expert.alpha * norm_exec + expert.beta * norm_forget
 
             # Select Winner: Lowest Bid = WINS the auction
             auction_winner_id = np.argmin(batch_bids)
 
             # DEBUG-LOG: Print evaluation decision occasionally
-            if len(all_labels) == 1:  # Print only for FIRST batch of each evaluation call
-                print(f"[EVAL DEBUG] Batch 0: Bids={np.round(batch_bids, 4)}")
+            if len(all_labels) == 1:
+                strategy_str = "prototype" if use_prototype else "pseudo-label"
+                print(f"[EVAL DEBUG ({strategy_str})] Batch 0: Bids={np.round(batch_bids, 4)}")
                 print(f"             Winner={auction_winner_id} (Min Bid)")
 
             # Get the winning expert's predictions for this batch
@@ -320,11 +430,153 @@ class ExpertPool:
             all_labels = torch.cat(all_labels)
             winner_preds = torch.cat(winner_preds)
 
-            # Calculate the final accuracy based on the winners' predictions
             ensemble_accuracy = (winner_preds == all_labels).float().mean().item()
             results['ensemble_accuracy'] = ensemble_accuracy
         else:
             results['ensemble_accuracy'] = 0.0
+
+        return results
+
+    def evaluate_all_per_sample(
+        self,
+        dataloader: torch.utils.data.DataLoader,
+        top_k: int = 1,
+        temperature: float = 1.0,
+        eval_bid_mode: str = 'full',
+        routing_strategy: str = 'prototype'
+    ) -> Dict:
+        """
+        Per-sample top-k evaluation using prototype distance routing.
+
+        Each sample is independently routed to its top-k experts by lowest
+        prototype distance, and outputs are combined via softmax-weighted sum.
+
+        Args:
+            dataloader: Test data loader.
+            top_k: Number of experts to combine per sample (1=winner-take-all, 2=Mixtral-style).
+            temperature: Softmax temperature for combining expert outputs (low=sharp, high=uniform).
+            eval_bid_mode: 'full' (distance + forget) or 'distance_only' (skip EWC component).
+            routing_strategy: 'prototype' or 'pseudo_label'.
+
+        Returns:
+            Dict with accuracy, per-expert selection counts, routing stats.
+        """
+        import math
+
+        use_prototype = (routing_strategy == 'prototype')
+
+        all_labels = []
+        all_preds = []
+        expert_sample_wins = {i: 0 for i in range(self.num_experts)}
+        # Track how often top-2 experts agree on prediction
+        top2_agreement_count = 0
+        top2_total = 0
+
+        for x, y in dataloader:
+            x_device = x.to(self.device)
+            y_device = y.to(self.device)
+            batch_size = x_device.shape[0]
+            all_labels.append(y_device.cpu())
+
+            # Collect per-expert features, logits, and per-sample distances
+            expert_logits = []  # list of (B, num_classes) tensors
+            expert_distances = []  # list of (B,) tensors — per-sample distances
+
+            for i, expert in enumerate(self.experts):
+                expert.model.eval()
+                with torch.no_grad():
+                    if use_prototype and hasattr(expert.model, 'forward_features'):
+                        features, logits = expert.model.forward_features(x_device)
+                    else:
+                        logits = expert.model(x_device)
+                        features = None
+                    expert_logits.append(logits)
+
+                if use_prototype and expert.prototype_store is not None and features is not None:
+                    per_sample_dist = expert.prototype_store.compute_per_sample_distances(features)
+                else:
+                    # No prototypes: high default distance (same scale)
+                    per_sample_dist = torch.full((batch_size,), 100.0, device=x_device.device)
+
+                if eval_bid_mode == 'full':
+                    pseudo_labels = logits.argmax(dim=-1).detach()
+                    forget_cost = expert.forget_estimator.compute_forgetting_cost(
+                        x_device, pseudo_labels
+                    )
+                    norm_dist = per_sample_dist / 10.0
+                    norm_forget = math.log1p(forget_cost) / 10.0
+                    per_sample_bid = expert.alpha * norm_dist + expert.beta * norm_forget
+                else:
+                    per_sample_bid = per_sample_dist
+
+                expert_distances.append(per_sample_bid)
+
+            # Stack: (num_experts, B) -> (B, num_experts)
+            distance_matrix = torch.stack(expert_distances, dim=0).T  # (B, N)
+            logits_stack = torch.stack(expert_logits, dim=0)  # (N, B, C)
+
+            # Per-sample top-k selection
+            # Lower distance = better → select k experts with smallest distance
+            _, top_k_indices = torch.topk(distance_matrix, k=min(top_k, self.num_experts),
+                                          dim=1, largest=False)  # (B, k)
+            top_k_distances = torch.gather(distance_matrix, 1, top_k_indices)  # (B, k)
+
+            if top_k == 1:
+                # Winner-take-all: just use the single best expert per sample
+                winners = top_k_indices.squeeze(1)  # (B,)
+                batch_preds = torch.zeros(batch_size, dtype=torch.long, device=x_device.device)
+                for b in range(batch_size):
+                    w = winners[b].item()
+                    batch_preds[b] = logits_stack[w, b].argmax()
+                    expert_sample_wins[w] += 1
+            else:
+                # Top-k combination: weighted sum of logits
+                # weights = softmax(-distance / temperature) over top-k experts
+                weights = F.softmax(-top_k_distances / temperature, dim=1)  # (B, k)
+
+                # Gather logits for top-k experts per sample
+                # logits_stack: (N, B, C) -> need (B, k, C)
+                num_classes = logits_stack.shape[2]
+                combined_logits = torch.zeros(batch_size, num_classes, device=x_device.device)
+
+                for b in range(batch_size):
+                    for j in range(min(top_k, self.num_experts)):
+                        expert_idx = top_k_indices[b, j].item()
+                        combined_logits[b] += weights[b, j] * logits_stack[expert_idx, b]
+                    # Count primary (closest) expert as winner
+                    expert_sample_wins[top_k_indices[b, 0].item()] += 1
+
+                batch_preds = combined_logits.argmax(dim=1)
+
+                # Track top-2 agreement
+                if top_k >= 2:
+                    for b in range(batch_size):
+                        e1 = top_k_indices[b, 0].item()
+                        e2 = top_k_indices[b, 1].item()
+                        pred1 = logits_stack[e1, b].argmax().item()
+                        pred2 = logits_stack[e2, b].argmax().item()
+                        if pred1 == pred2:
+                            top2_agreement_count += 1
+                        top2_total += 1
+
+            all_preds.append(batch_preds.cpu())
+
+        all_labels = torch.cat(all_labels)
+        all_preds = torch.cat(all_preds)
+        accuracy = (all_preds == all_labels).float().mean().item()
+
+        total_samples = sum(expert_sample_wins.values())
+        results = {
+            'ensemble_accuracy': accuracy,
+            'expert_sample_wins': expert_sample_wins,
+            'expert_sample_rates': {k: v / total_samples for k, v in expert_sample_wins.items()},
+            'top_k': top_k,
+            'eval_bid_mode': eval_bid_mode,
+            'temperature': temperature,
+        }
+
+        if top2_total > 0:
+            results['top2_agreement'] = top2_agreement_count / top2_total
 
         return results
 

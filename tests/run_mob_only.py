@@ -40,10 +40,11 @@ from typing import Dict, List, Optional, Tuple
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from mob.models import create_model
-from mob.auction import PerBatchVCGAuction
+from mob.auction import PerBatchAuction
 from mob.bidding import ExecutionCostEstimator, EWCForgettingEstimator
 from mob.bid_diagnostics import BidLogger
 from mob.utils import set_seed
+from contibualmob.prototype_store import PrototypeStore
 
 # Import dataset creation (this is safe - just data loading)
 from tests.test_baselines import create_split_mnist
@@ -123,6 +124,9 @@ class MoBExpertLocal:
         self.lwf_soft_targets: Dict[int, torch.Tensor] = {}
         self.lwf_batch_counter = 0  # Tracks batch position within task
         # =====================================================================
+
+        # Prototype store for feature-distance routing (lazy init)
+        self.prototype_store: Optional[PrototypeStore] = None
 
     def record_lwf_soft_targets(self, dataloader, max_batches: int = None):
         """
@@ -251,7 +255,21 @@ class MoBExpertLocal:
         y = y.to(self.device)
 
         optimizer.zero_grad()
-        logits = self.model(x)
+
+        # Use forward_features for prototype accumulation
+        if hasattr(self.model, 'forward_features'):
+            features, logits = self.model.forward_features(x)
+
+            if self.prototype_store is None:
+                self.prototype_store = PrototypeStore(
+                    feature_dim=features.shape[1],
+                    device=self.device
+                )
+
+            self.prototype_store.update(features.detach(), y)
+        else:
+            logits = self.model(x)
+
         task_loss = F.cross_entropy(logits, y)
         ewc_penalty = self.forget_estimator.penalty()
 
@@ -291,8 +309,11 @@ class MoBExpertLocal:
         return result
 
     def update_after_task(self, dataloader, num_samples: int = 200):
-        """Update Fisher information after task completion."""
+        """Update Fisher information and finalize prototypes after task completion."""
         self.forget_estimator.update_fisher(dataloader, num_samples=num_samples)
+
+        if self.prototype_store is not None:
+            self.prototype_store.finalize()
 
     def reset_task_statistics(self):
         """Reset per-task counters."""
@@ -323,6 +344,12 @@ class ExpertPoolLocal:
     ):
         self.num_experts = num_experts
         self.device = device if device is not None else torch.device('cpu')
+        self.load_bias = np.zeros(num_experts)
+        self.expert_win_counts = np.zeros(num_experts)
+        self.total_auctions = 0
+        self.use_conscience = expert_config.get('use_conscience', False)
+        self.conscience_rate = expert_config.get('conscience_rate', 0.01)
+        self.conscience_decay = expert_config.get('conscience_decay', 0.999)
 
         # Create LOCAL experts (not the original MoBExpert)
         self.experts: List[MoBExpertLocal] = []
@@ -350,32 +377,119 @@ class ExpertPoolLocal:
             )
             self.experts.append(expert)
 
-    def collect_bids(self, x: torch.Tensor, y: torch.Tensor) -> Tuple[np.ndarray, List[Dict]]:
-        """Collect bids from all experts."""
-        bids = np.zeros(self.num_experts)
-        components = []
-        for i, expert in enumerate(self.experts):
-            bid, comp = expert.compute_bid(x, y)
-            bids[i] = bid
-            components.append(comp)
-        return bids, components
+    def collect_bids(self, x: torch.Tensor, y: torch.Tensor,
+                     train_routing: str = 'label') -> Tuple[np.ndarray, List[Dict]]:
+        """Collect bids from all experts.
+
+        Args:
+            train_routing: 'label' (default) or 'prototype' (use prototype distance).
+        """
+        import math
+
+        if train_routing == 'prototype':
+            bids = np.zeros(self.num_experts)
+            components = []
+            for i, expert in enumerate(self.experts):
+                expert.total_batches_seen += 1
+
+                has_prototypes = (
+                    expert.prototype_store is not None
+                    and len(expert.prototype_store.centroids) > 0
+                    and hasattr(expert.model, 'forward_features')
+                )
+
+                # Get features and logits
+                expert.model.eval()
+                with torch.no_grad():
+                    if hasattr(expert.model, 'forward_features'):
+                        features, logits = expert.model.forward_features(x.to(self.device))
+                    else:
+                        logits = expert.model(x.to(self.device))
+                        features = None
+                expert.model.train()
+
+                if has_prototypes and features is not None:
+                    distance_score = expert.prototype_store.compute_routing_score(features)
+                    routing_tag = 'prototype'
+                else:
+                    # No prototypes yet: high default distance so trained experts
+                    # are preferred, but this expert can still win if others are worse
+                    distance_score = 100.0
+                    routing_tag = 'prototype_default'
+
+                pseudo_labels = logits.argmax(dim=-1).detach()
+                raw_forget = expert.forget_estimator.compute_forgetting_cost(
+                    x.to(self.device), pseudo_labels
+                )
+                norm_distance = distance_score / 10.0
+                norm_forget = math.log1p(raw_forget) / 10.0
+                bid = expert.alpha * norm_distance + expert.beta * norm_forget
+                if self.use_conscience:
+                    bid = bid + self.load_bias[i]
+
+                comp = {
+                    'exec_cost': distance_score,
+                    'forget_cost': raw_forget,
+                    'norm_exec_cost': norm_distance,
+                    'norm_forget_cost': norm_forget,
+                    'bid': bid,
+                    'alpha': expert.alpha,
+                    'beta': expert.beta,
+                    'routing': routing_tag
+                }
+
+                bids[i] = bid
+                components.append(comp)
+            return bids, components
+        else:
+            bids = np.zeros(self.num_experts)
+            components = []
+            for i, expert in enumerate(self.experts):
+                bid, comp = expert.compute_bid(x, y)
+                if self.use_conscience:
+                    bid = bid + self.load_bias[i]
+                    comp['bid'] = bid
+                bids[i] = bid
+                components.append(comp)
+            return bids, components
 
     def train_winner(self, winner_id: int, x: torch.Tensor, y: torch.Tensor,
                      optimizers: List[torch.optim.Optimizer]) -> Dict:
         """Train the winning expert."""
-        return self.experts[winner_id].train_on_batch(x, y, optimizers[winner_id])
+        metrics = self.experts[winner_id].train_on_batch(x, y, optimizers[winner_id])
+        self.update_conscience_bias(winner_id)
+        return metrics
 
-    def evaluate_all(self, dataloader, verbose: bool = False) -> Dict:
+    def update_conscience_bias(self, winner_id: int):
+        """Update conscience load bias based on cumulative win frequencies."""
+        if not self.use_conscience:
+            return
+
+        self.total_auctions += 1
+        self.expert_win_counts[winner_id] += 1
+        target_freq = 1.0 / self.num_experts
+
+        for i in range(self.num_experts):
+            actual_freq = self.expert_win_counts[i] / self.total_auctions
+            self.load_bias[i] += self.conscience_rate * (actual_freq - target_freq)
+
+        self.load_bias *= self.conscience_decay
+
+    def evaluate_all(self, dataloader, verbose: bool = False,
+                      routing_strategy: str = 'pseudo_label',
+                      bid_logger=None, task_id: int = -1) -> Dict:
         """
-        Evaluate using pseudo-label auction routing.
+        Evaluate using auction routing.
 
-        Uses FORGET-COST ONLY for routing to avoid the "confidently wrong" problem
-        where an expert trained on different tasks predicts everything as its known
-        classes with high confidence, giving artificially low exec_cost.
-
-        Expert with lowest forget_cost = their Fisher-protected knowledge is
-        most aligned with this data (gradients won't hurt their memory).
+        Args:
+            routing_strategy: 'pseudo_label' (forget-cost only) or 'prototype' (feature-distance).
+            bid_logger: optional BidLogger to record eval routing decisions.
+            task_id: task index for labelling eval batch logs.
         """
+        import math
+
+        use_prototype = (routing_strategy == 'prototype')
+
         all_labels = []
         winner_preds = []
         expert_selections = {i: 0 for i in range(self.num_experts)}
@@ -389,36 +503,59 @@ class ExpertPoolLocal:
 
             batch_bids = np.zeros(self.num_experts)
             batch_logits = []
+            per_expert_log_data = []
 
             for i, expert in enumerate(self.experts):
                 expert.model.eval()
                 with torch.no_grad():
-                    logits = expert.model(x_device)
+                    if use_prototype and hasattr(expert.model, 'forward_features'):
+                        features, logits = expert.model.forward_features(x_device)
+                    else:
+                        logits = expert.model(x_device)
+                        features = None
                     batch_logits.append(logits)
 
-                # Use pseudo-labels (model's own predictions) instead of ground truth
                 pseudo_labels = logits.argmax(dim=-1).detach()
-
-                # Compute forgetting cost with pseudo-labels
                 forget_cost = expert.forget_estimator.compute_forgetting_cost(x_device, pseudo_labels)
                 expert_forget_costs_sum[i] += forget_cost
 
-                # FORGET-COST ONLY routing: route to expert with lowest forget_cost
-                # This avoids the "confidently wrong" problem with pseudo-label exec_cost
-                batch_bids[i] = forget_cost
+                if use_prototype and expert.prototype_store is not None and features is not None:
+                    distance_score = expert.prototype_store.compute_routing_score(features)
+                else:
+                    # No prototypes: high default distance (same scale as prototype path)
+                    distance_score = 100.0
 
-            # Route to expert with LOWEST bid (same as VCG auction)
+                norm_distance = distance_score / 10.0
+                norm_forget = math.log1p(forget_cost) / 10.0
+                batch_bids[i] = expert.alpha * norm_distance + expert.beta * norm_forget
+                per_expert_log_data.append({
+                    'primary_cost': distance_score,
+                    'forget_cost': forget_cost,
+                    'norm_primary': norm_distance,
+                    'norm_forget': norm_forget,
+                    'bid': float(batch_bids[i])
+                })
+
             winner_id = np.argmin(batch_bids)
             expert_selections[winner_id] += 1
             winning_preds = batch_logits[winner_id].argmax(dim=-1).cpu()
             winner_preds.append(winning_preds)
+
+            # Log eval batch
+            if bid_logger is not None and per_expert_log_data:
+                bid_logger.log_eval_batch(
+                    batch_idx=num_batches + task_id * 10000,  # offset by task to keep unique
+                    per_expert_data=per_expert_log_data,
+                    winner_id=int(winner_id),
+                    digit_labels=y_device.cpu().tolist(),
+                    winner_preds=winning_preds.tolist()
+                )
             num_batches += 1
 
         all_labels = torch.cat(all_labels)
         winner_preds = torch.cat(winner_preds)
         accuracy = (winner_preds == all_labels).float().mean().item()
 
-        # Diagnostic: which expert was selected most
         total_batches = sum(expert_selections.values())
         primary_eval_expert = max(expert_selections, key=expert_selections.get)
         avg_forget_costs = {k: v/num_batches for k, v in expert_forget_costs_sum.items()}
@@ -430,6 +567,125 @@ class ExpertPoolLocal:
             'eval_distribution': {k: v/total_batches for k, v in expert_selections.items()},
             'avg_forget_costs': avg_forget_costs
         }
+
+    def evaluate_all_per_sample(
+        self,
+        dataloader,
+        top_k: int = 1,
+        temperature: float = 1.0,
+        eval_bid_mode: str = 'full',
+        routing_strategy: str = 'prototype'
+    ) -> Dict:
+        """
+        Per-sample top-k evaluation using prototype distance routing.
+
+        Each sample is independently routed to its top-k experts by lowest
+        prototype distance, and outputs are combined via softmax-weighted sum.
+        """
+        import math
+
+        use_prototype = (routing_strategy == 'prototype')
+
+        all_labels = []
+        all_preds = []
+        expert_sample_wins = {i: 0 for i in range(self.num_experts)}
+        top2_agreement_count = 0
+        top2_total = 0
+
+        for x, y in dataloader:
+            x_device = x.to(self.device)
+            y_device = y.to(self.device)
+            batch_size = x_device.shape[0]
+            all_labels.append(y_device.cpu())
+
+            expert_logits = []
+            expert_distances = []
+
+            for i, expert in enumerate(self.experts):
+                expert.model.eval()
+                with torch.no_grad():
+                    if use_prototype and hasattr(expert.model, 'forward_features'):
+                        features, logits = expert.model.forward_features(x_device)
+                    else:
+                        logits = expert.model(x_device)
+                        features = None
+                    expert_logits.append(logits)
+
+                if use_prototype and expert.prototype_store is not None and features is not None:
+                    per_sample_dist = expert.prototype_store.compute_per_sample_distances(features)
+                else:
+                    # No prototypes: high default distance (same scale)
+                    per_sample_dist = torch.full((batch_size,), 100.0, device=x_device.device)
+
+                if eval_bid_mode == 'full':
+                    pseudo_labels = logits.argmax(dim=-1).detach()
+                    forget_cost = expert.forget_estimator.compute_forgetting_cost(
+                        x_device, pseudo_labels
+                    )
+                    norm_dist = per_sample_dist / 10.0
+                    norm_forget = math.log1p(forget_cost) / 10.0
+                    per_sample_bid = expert.alpha * norm_dist + expert.beta * norm_forget
+                else:
+                    per_sample_bid = per_sample_dist
+
+                expert_distances.append(per_sample_bid)
+
+            distance_matrix = torch.stack(expert_distances, dim=0).T  # (B, N)
+            logits_stack = torch.stack(expert_logits, dim=0)  # (N, B, C)
+
+            _, top_k_indices = torch.topk(distance_matrix, k=min(top_k, self.num_experts),
+                                          dim=1, largest=False)
+            top_k_distances = torch.gather(distance_matrix, 1, top_k_indices)
+
+            if top_k == 1:
+                winners = top_k_indices.squeeze(1)
+                batch_preds = torch.zeros(batch_size, dtype=torch.long, device=x_device.device)
+                for b in range(batch_size):
+                    w = winners[b].item()
+                    batch_preds[b] = logits_stack[w, b].argmax()
+                    expert_sample_wins[w] += 1
+            else:
+                weights = F.softmax(-top_k_distances / temperature, dim=1)
+                num_classes = logits_stack.shape[2]
+                combined_logits = torch.zeros(batch_size, num_classes, device=x_device.device)
+
+                for b in range(batch_size):
+                    for j in range(min(top_k, self.num_experts)):
+                        expert_idx = top_k_indices[b, j].item()
+                        combined_logits[b] += weights[b, j] * logits_stack[expert_idx, b]
+                    expert_sample_wins[top_k_indices[b, 0].item()] += 1
+
+                batch_preds = combined_logits.argmax(dim=1)
+
+                if top_k >= 2:
+                    for b in range(batch_size):
+                        e1 = top_k_indices[b, 0].item()
+                        e2 = top_k_indices[b, 1].item()
+                        if logits_stack[e1, b].argmax().item() == logits_stack[e2, b].argmax().item():
+                            top2_agreement_count += 1
+                        top2_total += 1
+
+            all_preds.append(batch_preds.cpu())
+
+        all_labels = torch.cat(all_labels)
+        all_preds = torch.cat(all_preds)
+        accuracy = (all_preds == all_labels).float().mean().item()
+
+        total_samples = sum(expert_sample_wins.values())
+        results = {
+            'ensemble_accuracy': accuracy,
+            'expert_sample_wins': expert_sample_wins,
+            'expert_sample_rates': {k: v / total_samples for k, v in expert_sample_wins.items()},
+            'primary_eval_expert': max(expert_sample_wins, key=expert_sample_wins.get),
+            'top_k': top_k,
+            'eval_bid_mode': eval_bid_mode,
+            'temperature': temperature,
+        }
+
+        if top2_total > 0:
+            results['top2_agreement'] = top2_agreement_count / top2_total
+
+        return results
 
 
 # =============================================================================
@@ -464,12 +720,15 @@ def run_experiment(train_tasks, test_tasks, config):
         'lwf_alpha': config.get('lwf_alpha', 0.1),
         # Bid formula
         'bid_formula': config.get('bid_formula', 'addition'),
+        'use_conscience': config.get('use_conscience', False),
+        'conscience_rate': config.get('conscience_rate', 0.01),
+        'conscience_decay': config.get('conscience_decay', 0.999),
         'dropout': 0.5
     }
 
     # Create LOCAL pool (not the original ExpertPool)
     pool = ExpertPoolLocal(config['num_experts'], expert_config, device=device)
-    auction = PerBatchVCGAuction(config['num_experts'])
+    auction = PerBatchAuction(config['num_experts'])
 
     optimizers = [
         torch.optim.Adam(expert.model.parameters(), lr=config['learning_rate'])
@@ -481,6 +740,7 @@ def run_experiment(train_tasks, test_tasks, config):
         num_experts=config['num_experts'],
         alpha=config['alpha'],
         beta=config['beta'],
+        routing_strategy=config.get('routing_strategy', 'pseudo_label'),
         log_file=None
     )
 
@@ -494,6 +754,9 @@ def run_experiment(train_tasks, test_tasks, config):
     # =========================================================================
     global_batch_idx = 0
     epochs_per_task = config.get('epochs_per_task', 4)
+    train_routing = config.get('train_routing', 'label')
+    train_routing_warmup = config.get('train_routing_warmup', 1000)
+    prototype_routing_active = False
 
     for task_id, task_loader in enumerate(train_tasks):
         print(f"\n{'='*70}")
@@ -532,8 +795,16 @@ def run_experiment(train_tasks, test_tasks, config):
 
             pbar = tqdm(task_loader, desc=f"Epoch {epoch+1}/{epochs_per_task}", leave=False)
             for x, y in pbar:
+                # Experiment 3: Switch to prototype routing after warmup
+                current_routing = 'label'
+                if train_routing == 'prototype' and global_batch_idx >= train_routing_warmup:
+                    current_routing = 'prototype'
+                    if not prototype_routing_active:
+                        print(f"\n>>> Switching to PROTOTYPE training routing at batch {global_batch_idx}")
+                        prototype_routing_active = True
+
                 # Collect bids
-                bids, components = pool.collect_bids(x, y)
+                bids, components = pool.collect_bids(x, y, train_routing=current_routing)
 
                 # Auction
                 winner_id, payment, _ = auction.run_auction(bids)
@@ -569,11 +840,24 @@ def run_experiment(train_tasks, test_tasks, config):
             print(f"  Primary expert: Expert {primary} ({pct:.1f}%)")
             expert_task_wins[task_id] = primary
 
-        # Update Fisher
+        # Update Fisher and finalize prototypes
         winning_experts = list(winners_this_task.keys())
         print(f"\n  Updating Fisher for experts: {winning_experts}")
         for eid in winning_experts:
             pool.experts[eid].update_after_task(task_loader, num_samples=200)
+            # Log prototype state after finalization
+            expert = pool.experts[eid]
+            if expert.prototype_store is not None:
+                ps = expert.prototype_store
+                bid_logger.log_prototype_finalize(
+                    expert_id=eid,
+                    event=f'task_{task_id+1}_end',
+                    batch_idx=global_batch_idx,
+                    classes_seen=list(ps.class_count.keys()),
+                    sample_counts=dict(ps.class_count),
+                    has_mahalanobis=(ps.inv_cov is not None),
+                    feature_dim=ps.feature_dim
+                )
 
         # =====================================================================
         # Optimizer Reset at Task END: Reset ALL winning experts' optimizers
@@ -631,24 +915,68 @@ def run_experiment(train_tasks, test_tasks, config):
         trained_by = expert_task_wins.get(task_id, "?")
         print(f"  Task {task_id+1} (digits {task_id*2},{task_id*2+1}): {acc_str}  [Trained: E{trained_by}]")
     print("  " + "-"*60)
-    print("\n  Ensemble Accuracy (with pseudo-label routing):")
+    routing_strategy = config.get('routing_strategy', 'pseudo_label')
 
-    for task_id, test_loader in enumerate(test_tasks):
-        results = pool.evaluate_all(test_loader)
-        acc = results['ensemble_accuracy']
-        final_accuracies.append(acc)
+    # Finalize prototypes before eval (in case last task didn't trigger finalize)
+    if routing_strategy == 'prototype':
+        for expert in pool.experts:
+            if expert.prototype_store is not None:
+                expert.prototype_store.finalize()
 
-        trained_expert = expert_task_wins.get(task_id, "?")
-        eval_expert = results['primary_eval_expert']
-        avg_costs = results['avg_forget_costs']
-        status = "OK" if acc > 0.5 else "FAIL"
+    per_sample_mode = config.get('per_sample', False)
+    top_k = config.get('top_k', 1)
+    eval_bid_mode = config.get('eval_bid_mode', 'full')
+    temperature = config.get('temperature', 1.0)
 
-        # Show mismatch between trained expert and eval expert
-        match_str = "" if trained_expert == eval_expert else f" ** ROUTED TO Expert {eval_expert}!"
-        cost_str = " | ForgetCost: " + ", ".join([f"E{k}:{v:.3f}" for k, v in sorted(avg_costs.items())])
-        print(f"  Task {task_id+1} (digits {task_id*2},{task_id*2+1}): "
-              f"{acc:.4f} {status} [Trained: Expert {trained_expert}]{match_str}")
-        print(f"    {cost_str}")
+    if per_sample_mode or top_k > 1:
+        print(f"\n  Per-Sample Ensemble Accuracy (top_k={top_k}, bid_mode={eval_bid_mode}, "
+              f"temp={temperature}, routing={routing_strategy}):")
+
+        for task_id, test_loader in enumerate(test_tasks):
+            results = pool.evaluate_all_per_sample(
+                test_loader,
+                top_k=top_k,
+                temperature=temperature,
+                eval_bid_mode=eval_bid_mode,
+                routing_strategy=routing_strategy
+            )
+            acc = results['ensemble_accuracy']
+            final_accuracies.append(acc)
+
+            trained_expert = expert_task_wins.get(task_id, "?")
+            eval_expert = results['primary_eval_expert']
+            status = "OK" if acc > 0.5 else "FAIL"
+
+            match_str = "" if trained_expert == eval_expert else f" ** ROUTED TO Expert {eval_expert}!"
+            print(f"  Task {task_id+1} (digits {task_id*2},{task_id*2+1}): "
+                  f"{acc:.4f} {status} [Trained: Expert {trained_expert}]{match_str}")
+            rates = results['expert_sample_rates']
+            print(f"    Per-sample routing: " + ", ".join([f"E{k}:{v:.1%}" for k, v in sorted(rates.items())]))
+            if 'top2_agreement' in results:
+                print(f"    Top-2 agreement: {results['top2_agreement']:.4f}")
+    else:
+        print(f"\n  Ensemble Accuracy (routing: {routing_strategy}, bid_mode: {eval_bid_mode}):")
+
+        for task_id, test_loader in enumerate(test_tasks):
+            results = pool.evaluate_all(
+                test_loader,
+                routing_strategy=routing_strategy,
+                bid_logger=bid_logger,
+                task_id=task_id
+            )
+            acc = results['ensemble_accuracy']
+            final_accuracies.append(acc)
+
+            trained_expert = expert_task_wins.get(task_id, "?")
+            eval_expert = results['primary_eval_expert']
+            avg_costs = results['avg_forget_costs']
+            status = "OK" if acc > 0.5 else "FAIL"
+
+            match_str = "" if trained_expert == eval_expert else f" ** ROUTED TO Expert {eval_expert}!"
+            cost_str = " | ForgetCost: " + ", ".join([f"E{k}:{v:.3f}" for k, v in sorted(avg_costs.items())])
+            print(f"  Task {task_id+1} (digits {task_id*2},{task_id*2+1}): "
+                  f"{acc:.4f} {status} [Trained: Expert {trained_expert}]{match_str}")
+            print(f"    {cost_str}")
 
     # Metrics
     avg_accuracy = np.mean(final_accuracies)
@@ -702,6 +1030,34 @@ def main():
                         help='Reset optimizer when expert switches tasks or is idle too long')
     parser.add_argument('--idle_threshold', type=int, default=100,
                         help='Batches of inactivity before optimizer reset (default: 100)')
+    parser.add_argument('--experiment_name', type=str, default=None,
+                        help='Unique name for this experiment run (used in output filenames)')
+    parser.add_argument('--routing_strategy', type=str, default='pseudo_label',
+                        choices=['pseudo_label', 'prototype'],
+                        help='Evaluation routing strategy: pseudo_label (default) or prototype (feature-distance)')
+    # Experiment 1: Per-sample top-k routing
+    parser.add_argument('--top_k', type=int, default=1,
+                        help='Number of experts to combine per sample (1=winner-take-all, 2=Mixtral-style)')
+    parser.add_argument('--per_sample', action='store_true',
+                        help='Enable per-sample routing (each sample routed independently)')
+    parser.add_argument('--temperature', type=float, default=1.0,
+                        help='Softmax temperature for top-k expert combination')
+    # Experiment 2: Distance-only bidding
+    parser.add_argument('--eval_bid_mode', type=str, default='full',
+                        choices=['full', 'distance_only'],
+                        help='Eval bid mode: full (distance+forget) or distance_only')
+    # Experiment 3: Training-time prototype routing
+    parser.add_argument('--train_routing', type=str, default='label',
+                        choices=['label', 'prototype'],
+                        help='Training routing: label (default) or prototype (after warmup)')
+    parser.add_argument('--train_routing_warmup', type=int, default=1000,
+                        help='Batches of label-based warmup before switching to prototype routing')
+    parser.add_argument('--use_conscience', action='store_true',
+                        help='Enable conscience bias load-balancing in bid computation')
+    parser.add_argument('--conscience_rate', type=float, default=0.01,
+                        help='Conscience bias update rate (default: 0.01)')
+    parser.add_argument('--conscience_decay', type=float, default=0.999,
+                        help='Conscience bias decay factor (default: 0.999)')
 
     args = parser.parse_args()
 
@@ -727,6 +1083,16 @@ def main():
         # Optimizer reset
         'reset_optimizer': args.reset_optimizer,
         'idle_threshold': args.idle_threshold,
+        'routing_strategy': args.routing_strategy,
+        'top_k': args.top_k,
+        'per_sample': args.per_sample,
+        'temperature': args.temperature,
+        'eval_bid_mode': args.eval_bid_mode,
+        'train_routing': args.train_routing,
+        'train_routing_warmup': args.train_routing_warmup,
+        'use_conscience': args.use_conscience,
+        'conscience_rate': args.conscience_rate,
+        'conscience_decay': args.conscience_decay,
     }
 
     print("="*70)
@@ -745,9 +1111,18 @@ def main():
     # Save
     os.makedirs('results', exist_ok=True)
 
+    # Determine output prefix
+    exp_name = args.experiment_name
+    if exp_name:
+        bids_path = f"results/{exp_name}_bids.json"
+        results_path = f"results/{exp_name}_results.json"
+    else:
+        strategy = config.get('routing_strategy', 'pseudo_label')
+        bids_path = f"results/mob_bids_{strategy}_seed_{args.seed}.json"
+        results_path = f"results/mob_results_seed_{args.seed}.json"
+
     if args.save_bids and 'bid_logger' in results:
-        # Save first, then print diagnostics (in case print crashes on unicode)
-        results['bid_logger'].save_logs(f"results/mob_bids_seed_{args.seed}.json")
+        results['bid_logger'].save_logs(bids_path)
         print("\n" + "="*70)
         print("BID DIAGNOSTICS")
         print("="*70)
@@ -755,6 +1130,7 @@ def main():
 
     summary = {
         'seed': args.seed,
+        'experiment_name': exp_name,
         'config': config,
         'task_accuracies': results['task_accuracies'],
         'final_accuracies': results['final_accuracies'],
@@ -762,9 +1138,9 @@ def main():
         'forgetting': results['forgetting'],
         'expert_task_wins': {str(k): v for k, v in results['expert_task_wins'].items()}
     }
-    with open(f"results/mob_results_seed_{args.seed}.json", 'w') as f:
+    with open(results_path, 'w') as f:
         json.dump(summary, f, indent=2)
-    print(f"\n[OK] Results saved to: results/mob_results_seed_{args.seed}.json")
+    print(f"\n[OK] Results saved to: {results_path}")
 
 
 if __name__ == '__main__':
