@@ -841,6 +841,7 @@ def run_experiment(train_tasks, test_tasks, config):
     task_accuracies = []
     final_accuracies = []
     expert_task_wins = {}
+    fisher_update_stats = []
 
     # =========================================================================
     # TRAINING
@@ -941,24 +942,47 @@ def run_experiment(train_tasks, test_tasks, config):
             print(f"  Primary expert: Expert {primary} ({pct:.1f}%)")
             expert_task_wins[task_id] = primary
 
-        # Update Fisher and finalize prototypes
-        winning_experts = list(winners_this_task.keys())
-        print(f"\n  Updating Fisher for experts: {winning_experts}")
-        for eid in winning_experts:
-            pool.experts[eid].update_after_task(task_loader, num_samples=200)
-            # Log prototype state after finalization
-            expert = pool.experts[eid]
-            if expert.prototype_store is not None:
-                ps = expert.prototype_store
-                bid_logger.log_prototype_finalize(
-                    expert_id=eid,
-                    event=f'task_{task_id+1}_end',
-                    batch_idx=global_batch_idx,
-                    classes_seen=list(ps.class_count.keys()),
-                    sample_counts=dict(ps.class_count),
-                    has_mahalanobis=(ps.inv_cov is not None),
-                    feature_dim=ps.feature_dim
-                )
+        # Update Fisher and finalize prototypes only for experts with enough wins
+        min_batches_fisher = config.get('min_batches_fisher', 100)
+        fisher_updated_experts = []
+        fisher_skipped_experts = []
+        print(f"\n  Updating Fisher for experts with >= {min_batches_fisher} wins")
+        for eid, count in sorted(winners_this_task.items()):
+            if count >= min_batches_fisher:
+                pool.experts[eid].update_after_task(task_loader, num_samples=200)
+                fisher_updated_experts.append(eid)
+
+                # Log prototype state after finalization
+                expert = pool.experts[eid]
+                if expert.prototype_store is not None:
+                    ps = expert.prototype_store
+                    bid_logger.log_prototype_finalize(
+                        expert_id=eid,
+                        event=f'task_{task_id+1}_end',
+                        batch_idx=global_batch_idx,
+                        classes_seen=list(ps.class_count.keys()),
+                        sample_counts=dict(ps.class_count),
+                        has_mahalanobis=(ps.inv_cov is not None),
+                        feature_dim=ps.feature_dim
+                    )
+            else:
+                print(f"Expert {eid} won only {count} batches in this task, skipping Fisher update")
+                fisher_skipped_experts.append({'expert_id': eid, 'wins': count})
+
+        if fisher_updated_experts:
+            print(f"  Fisher updated experts: {fisher_updated_experts}")
+        else:
+            print("  No experts met Fisher update threshold this task.")
+        if fisher_skipped_experts:
+            print(f"  Fisher skipped experts: {[s['expert_id'] for s in fisher_skipped_experts]}")
+
+        fisher_update_stats.append({
+            'task_id': task_id,
+            'winner_counts': {str(eid): count for eid, count in sorted(winners_this_task.items())},
+            'updated_experts': fisher_updated_experts,
+            'skipped_experts': fisher_skipped_experts,
+            'min_batches_fisher': min_batches_fisher
+        })
 
         # =====================================================================
         # Optimizer Reset at Task END: Reset ALL winning experts' optimizers
@@ -966,12 +990,15 @@ def run_experiment(train_tasks, test_tasks, config):
         # helps because Adam momentum from old task can hurt new task learning.
         # =====================================================================
         if config.get('reset_optimizer', False):
-            for eid in winning_experts:
+            for eid in fisher_updated_experts:
                 optimizers[eid] = torch.optim.Adam(
                     pool.experts[eid].model.parameters(),
                     lr=config['learning_rate']
                 )
-            print(f"  [Optimizer Reset] Reset optimizers for experts: {winning_experts}")
+            if fisher_updated_experts:
+                print(f"  [Optimizer Reset] Reset optimizers for experts: {fisher_updated_experts}")
+            else:
+                print("  [Optimizer Reset] No experts received Fisher update; no optimizer reset")
         # =====================================================================
 
         # Evaluate current task using the PRIMARY expert (not routing)
@@ -1100,6 +1127,7 @@ def run_experiment(train_tasks, test_tasks, config):
         'avg_accuracy': avg_accuracy,
         'forgetting': avg_forgetting,
         'expert_task_wins': expert_task_wins,
+        'fisher_update_stats': fisher_update_stats,
         'bid_logger': bid_logger
     }
 
@@ -1169,6 +1197,8 @@ def main():
                         help='Minimum routing temperature before deterministic argmin')
     parser.add_argument('--temp_decay', type=float, default=0.995,
                         help='Per-batch decay factor for routing temperature')
+    parser.add_argument('--min_batches_fisher', type=int, default=100,
+                        help='Minimum wins in a task required to update Fisher (default: 100)')
 
     args = parser.parse_args()
 
@@ -1209,6 +1239,7 @@ def main():
         'routing_temperature': args.routing_temperature,
         'temp_min': args.temp_min,
         'temp_decay': args.temp_decay,
+        'min_batches_fisher': args.min_batches_fisher,
     }
 
     print("="*70)
@@ -1252,7 +1283,8 @@ def main():
         'final_accuracies': results['final_accuracies'],
         'avg_accuracy': results['avg_accuracy'],
         'forgetting': results['forgetting'],
-        'expert_task_wins': {str(k): v for k, v in results['expert_task_wins'].items()}
+        'expert_task_wins': {str(k): v for k, v in results['expert_task_wins'].items()},
+        'fisher_update_stats': results['fisher_update_stats']
     }
     with open(results_path, 'w') as f:
         json.dump(summary, f, indent=2)

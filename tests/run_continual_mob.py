@@ -191,17 +191,29 @@ def run_continual_experiment(train_tasks, test_tasks, config):
                  buffer_loader = [(bx, by) for bx, by, _ in replay_buffer]
                  buffer_winners = [w for _, _, w in replay_buffer]
                  
-                 # Filter: Only consolidate experts with significant presence (>1% of buffer)
-                 # This prevents locking in "random" weights for experts that just got lucky on 1-2 batches
+                 # Filter: only consolidate experts with enough wins in the replay buffer
                  from collections import Counter
                  counts = Counter(buffer_winners)
-                 threshold = len(replay_buffer) * 0.01
-                 active_experts = [eid for eid, count in counts.items() if count > threshold]
+                 min_batches_fisher = config.get('min_batches_fisher', 100)
+                 active_experts = []
+                 for eid, count in sorted(counts.items()):
+                    if count >= min_batches_fisher:
+                        active_experts.append(eid)
+                    else:
+                        tqdm.write(f"Expert {eid} won only {count} batches in this task, skipping Fisher update")
                  
-                 tqdm.write(f"    Active experts in buffer: {list(set(buffer_winners))} -> Filtered: {active_experts}")
+                 tqdm.write(f"    Experts meeting Fisher threshold ({min_batches_fisher}): {active_experts}")
                  
                  if active_experts:
                     pool.consolidate(buffer_loader, num_samples=200, expert_ids=active_experts)
+
+                    if config.get('reset_optimizer', False):
+                        for eid in active_experts:
+                            optimizers[eid] = torch.optim.Adam(
+                                pool.experts[eid].model.parameters(),
+                                lr=config['learning_rate']
+                            )
+                        tqdm.write(f"    [Optimizer Reset] Reset optimizers for experts: {active_experts}")
 
                     # Finalize prototypes for experts that didn't get consolidated
                     for eid in range(config['num_experts']):
@@ -223,6 +235,8 @@ def run_continual_experiment(train_tasks, test_tasks, config):
                                 has_mahalanobis=(ps.inv_cov is not None),
                                 feature_dim=ps.feature_dim
                             )
+                 else:
+                    tqdm.write("    No experts met Fisher update threshold; skipping consolidation")
 
             replay_buffer = []
 
@@ -545,6 +559,8 @@ def main():
                         help='Minimum routing temperature before deterministic argmin')
     parser.add_argument('--temp_decay', type=float, default=0.995,
                         help='Per-batch decay factor for routing temperature')
+    parser.add_argument('--min_batches_fisher', type=int, default=100,
+                        help='Minimum wins in consolidation buffer required to update Fisher (default: 100)')
 
     args = parser.parse_args()
     set_seed(args.seed)
@@ -579,7 +595,8 @@ def main():
         'seed_idle_prototypes': args.seed_idle_prototypes,
         'routing_temperature': args.routing_temperature,
         'temp_min': args.temp_min,
-        'temp_decay': args.temp_decay
+        'temp_decay': args.temp_decay,
+        'min_batches_fisher': args.min_batches_fisher
     }
 
     print("Creating datasets...")
