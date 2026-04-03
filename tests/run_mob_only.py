@@ -351,6 +351,10 @@ class ExpertPoolLocal:
         self.conscience_rate = expert_config.get('conscience_rate', 0.01)
         self.conscience_decay = expert_config.get('conscience_decay', 0.999)
         self.seed_idle_prototypes_enabled = expert_config.get('seed_idle_prototypes', False)
+        self.routing_temperature = expert_config.get('routing_temperature', 0.0)
+        self.temp_min = expert_config.get('temp_min', 0.01)
+        self.temp_decay = expert_config.get('temp_decay', 0.995)
+        self.current_temperature = self.routing_temperature
         self._prototypes_seeded = False
         self._latest_batch = None
 
@@ -525,6 +529,33 @@ class ExpertPoolLocal:
             self.load_bias[i] += self.conscience_rate * (actual_freq - target_freq)
 
         self.load_bias *= self.conscience_decay
+
+    def select_winner(self, bids: np.ndarray, train_routing: str = 'label', is_training: bool = True) -> int:
+        """
+        Select winner from bids.
+
+        Temperature annealing applies only during training-time prototype routing.
+        Eval paths remain deterministic argmin.
+        """
+        if (
+            is_training
+            and train_routing == 'prototype'
+            and self.routing_temperature > 0.0
+            and self.current_temperature > self.temp_min
+        ):
+            neg_bids = -np.asarray(bids, dtype=np.float64) / self.current_temperature
+            neg_bids = neg_bids - np.max(neg_bids)
+            probs = np.exp(neg_bids)
+            probs_sum = probs.sum()
+            if probs_sum <= 0.0:
+                winner_id = int(np.argmin(bids))
+            else:
+                probs = probs / probs_sum
+                winner_id = int(np.random.choice(self.num_experts, p=probs))
+            self.current_temperature = max(self.temp_min, self.current_temperature * self.temp_decay)
+            return winner_id
+
+        return int(np.argmin(bids))
 
     def evaluate_all(self, dataloader, verbose: bool = False,
                       routing_strategy: str = 'pseudo_label',
@@ -775,6 +806,9 @@ def run_experiment(train_tasks, test_tasks, config):
         'conscience_rate': config.get('conscience_rate', 0.01),
         'conscience_decay': config.get('conscience_decay', 0.999),
         'seed_idle_prototypes': config.get('seed_idle_prototypes', False),
+        'routing_temperature': config.get('routing_temperature', 0.0),
+        'temp_min': config.get('temp_min', 0.01),
+        'temp_decay': config.get('temp_decay', 0.995),
         'dropout': 0.5
     }
 
@@ -859,7 +893,15 @@ def run_experiment(train_tasks, test_tasks, config):
                 bids, components = pool.collect_bids(x, y, train_routing=current_routing)
 
                 # Auction
-                winner_id, payment, _ = auction.run_auction(bids)
+                winner_id = pool.select_winner(
+                    bids,
+                    train_routing=current_routing,
+                    is_training=True
+                )
+                if len(bids) > 1:
+                    payment = float(np.partition(bids, 1)[1])
+                else:
+                    payment = float(bids[0])
 
                 # Track
                 winners_this_task[winner_id] = winners_this_task.get(winner_id, 0) + 1
@@ -1112,6 +1154,12 @@ def main():
                         help='Conscience bias decay factor (default: 0.999)')
     parser.add_argument('--seed_idle_prototypes', action='store_true',
                         help='Seed prototype stores for idle experts at prototype-routing switch')
+    parser.add_argument('--routing_temperature', type=float, default=0.0,
+                        help='Initial temperature for stochastic prototype routing (0.0 disables)')
+    parser.add_argument('--temp_min', type=float, default=0.01,
+                        help='Minimum routing temperature before deterministic argmin')
+    parser.add_argument('--temp_decay', type=float, default=0.995,
+                        help='Per-batch decay factor for routing temperature')
 
     args = parser.parse_args()
 
@@ -1148,6 +1196,9 @@ def main():
         'conscience_rate': args.conscience_rate,
         'conscience_decay': args.conscience_decay,
         'seed_idle_prototypes': args.seed_idle_prototypes,
+        'routing_temperature': args.routing_temperature,
+        'temp_min': args.temp_min,
+        'temp_decay': args.temp_decay,
     }
 
     print("="*70)

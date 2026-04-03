@@ -107,6 +107,10 @@ class ExpertPool:
         self.conscience_rate = expert_config.get('conscience_rate', 0.01)
         self.conscience_decay = expert_config.get('conscience_decay', 0.999)
         self.seed_idle_prototypes_enabled = expert_config.get('seed_idle_prototypes', False)
+        self.routing_temperature = expert_config.get('routing_temperature', 0.0)
+        self.temp_min = expert_config.get('temp_min', 0.01)
+        self.temp_decay = expert_config.get('temp_decay', 0.995)
+        self.current_temperature = self.routing_temperature
         self._prototypes_seeded = False
         self._latest_batch: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
 
@@ -300,6 +304,42 @@ class ExpertPool:
             self.load_bias[i] += self.conscience_rate * (actual_freq - target_freq)
 
         self.load_bias *= self.conscience_decay
+
+    def select_winner(
+        self,
+        bids: np.ndarray,
+        train_routing: str = 'label',
+        is_training: bool = True
+    ) -> int:
+        """
+        Select winning expert from bids.
+
+        Temperature-annealed stochastic routing applies ONLY during training
+        when prototype routing is active. All other cases use deterministic argmin.
+        """
+        if (
+            is_training
+            and train_routing == 'prototype'
+            and self.routing_temperature > 0.0
+            and self.current_temperature > self.temp_min
+        ):
+            neg_bids = -np.asarray(bids, dtype=np.float64) / self.current_temperature
+            neg_bids = neg_bids - np.max(neg_bids)  # numerical stability
+            probs = np.exp(neg_bids)
+            probs_sum = probs.sum()
+            if probs_sum <= 0.0:
+                winner_id = int(np.argmin(bids))
+            else:
+                probs = probs / probs_sum
+                winner_id = int(np.random.choice(self.num_experts, p=probs))
+
+            self.current_temperature = max(
+                self.temp_min,
+                self.current_temperature * self.temp_decay
+            )
+            return winner_id
+
+        return int(np.argmin(bids))
 
     def _should_reset_optimizer_on_shift(self, expert, shift_detected: bool) -> bool:
         """

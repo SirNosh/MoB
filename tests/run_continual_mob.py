@@ -53,6 +53,9 @@ def run_continual_experiment(train_tasks, test_tasks, config):
         'conscience_rate': config.get('conscience_rate', 0.01),
         'conscience_decay': config.get('conscience_decay', 0.999),
         'seed_idle_prototypes': config.get('seed_idle_prototypes', False),
+        'routing_temperature': config.get('routing_temperature', 0.0),
+        'temp_min': config.get('temp_min', 0.01),
+        'temp_decay': config.get('temp_decay', 0.995),
         'dropout': 0.5
     }
 
@@ -137,7 +140,15 @@ def run_continual_experiment(train_tasks, test_tasks, config):
                 prototype_routing_active = True
 
         bids, components = pool.collect_bids(x, y, train_routing=current_routing)
-        winner_id, payment, _ = auction.run_auction(bids)
+        winner_id = pool.select_winner(
+            bids,
+            train_routing=current_routing,
+            is_training=True
+        )
+        if len(bids) > 1:
+            payment = float(np.partition(bids, 1)[1])
+        else:
+            payment = float(bids[0])
 
         # 2. Logging & Buffer
         replay_buffer.append((x, y, winner_id))
@@ -525,6 +536,12 @@ def main():
                         help='Conscience bias decay factor (default: 0.999)')
     parser.add_argument('--seed_idle_prototypes', action='store_true',
                         help='Seed prototype stores for idle experts at prototype-routing switch')
+    parser.add_argument('--routing_temperature', type=float, default=0.0,
+                        help='Initial temperature for stochastic prototype routing (0.0 disables)')
+    parser.add_argument('--temp_min', type=float, default=0.01,
+                        help='Minimum routing temperature before deterministic argmin')
+    parser.add_argument('--temp_decay', type=float, default=0.995,
+                        help='Per-batch decay factor for routing temperature')
 
     args = parser.parse_args()
     set_seed(args.seed)
@@ -555,7 +572,10 @@ def main():
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,
         'conscience_decay': args.conscience_decay,
-        'seed_idle_prototypes': args.seed_idle_prototypes
+        'seed_idle_prototypes': args.seed_idle_prototypes,
+        'routing_temperature': args.routing_temperature,
+        'temp_min': args.temp_min,
+        'temp_decay': args.temp_decay
     }
 
     print("Creating datasets...")

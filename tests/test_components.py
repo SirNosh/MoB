@@ -512,6 +512,103 @@ def test_seeding_backward_compat():
         "Backward compatibility requires idle experts to keep default distance 100.0 when seeding is disabled"
 
 
+def test_temperature_annealing_schedule():
+    """Temperature should decay each training batch until temp_min."""
+    from contibualmob.pool import ExpertPool
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'routing_temperature': 2.0,
+        'temp_decay': 0.5,
+        'temp_min': 0.01
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+    bids = np.array([0.1, 0.2, 0.3, 0.4], dtype=float)
+
+    seen_temps = []
+    for _ in range(10):
+        seen_temps.append(pool.current_temperature)
+        pool.select_winner(bids, train_routing='prototype', is_training=True)
+
+    expected = [2.0, 1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.01, 0.01]
+    assert np.allclose(seen_temps, expected), f"Expected annealing schedule {expected}, got {seen_temps}"
+    assert pool.current_temperature == 0.01
+
+
+def test_temperature_enables_exploration():
+    """High temperature should allow non-argmin experts to win some auctions."""
+    from contibualmob.pool import ExpertPool
+
+    np.random.seed(0)
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'routing_temperature': 5.0,
+        'temp_decay': 1.0,
+        'temp_min': 0.01
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+    bids = np.array([0.0, 3.0, 3.0, 3.0], dtype=float)
+
+    wins = np.zeros(4, dtype=int)
+    for _ in range(100):
+        winner = pool.select_winner(bids, train_routing='prototype', is_training=True)
+        wins[winner] += 1
+
+    non_best_win_rate = wins[1:].sum() / 100.0
+    assert non_best_win_rate > 0.10, \
+        f"Expected >10% non-argmin wins with high temperature, got {non_best_win_rate:.2%}"
+
+
+def test_temperature_backward_compat():
+    """With routing_temperature=0.0, selection must remain deterministic argmin."""
+    from contibualmob.pool import ExpertPool
+
+    np.random.seed(123)
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'routing_temperature': 0.0,
+        'temp_decay': 0.5,
+        'temp_min': 0.01
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+    bids = np.array([0.05, 0.2, 0.3, 0.4], dtype=float)
+
+    winners = [
+        pool.select_winner(bids, train_routing='prototype', is_training=True)
+        for _ in range(100)
+    ]
+    assert all(w == 0 for w in winners), "Temperature disabled should use deterministic argmin"
+    assert pool.current_temperature == 0.0
+
+    # Eval-time routing must always be deterministic, even when temperature is enabled.
+    eval_config = dict(expert_config)
+    eval_config['routing_temperature'] = 5.0
+    eval_pool = ExpertPool(num_experts=4, expert_config=eval_config)
+    eval_winners = [
+        eval_pool.select_winner(bids, train_routing='prototype', is_training=False)
+        for _ in range(50)
+    ]
+    assert all(w == 0 for w in eval_winners), "Eval routing must remain deterministic argmin"
+    assert eval_pool.current_temperature == 5.0, "Eval routing should not decay temperature"
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
