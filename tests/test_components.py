@@ -319,6 +319,7 @@ def test_conscience_bias_reduces_imbalance():
     """Conscience bias should penalize frequent winners and allow others to win."""
     from contibualmob.pool import ExpertPool
 
+    max_bias = 0.05
     expert_config = {
         'architecture': 'simple_cnn',
         'num_classes': 10,
@@ -328,11 +329,12 @@ def test_conscience_bias_reduces_imbalance():
         'lambda_ewc': 1.0,
         'use_conscience': True,
         'conscience_rate': 0.5,
-        'conscience_decay': 1.0
+        'conscience_decay': 1.0,
+        'conscience_max_bias': max_bias
     }
     pool = ExpertPool(num_experts=4, expert_config=expert_config)
 
-    raw_bids = [0.1, 0.2, 0.3, 0.4]
+    raw_bids = [0.10, 0.11, 0.12, 0.13]
     for i, expert in enumerate(pool.experts):
         def _fixed_bid(self, x, y, _rb=raw_bids[i]):
             return _rb, {
@@ -361,6 +363,14 @@ def test_conscience_bias_reduces_imbalance():
 
     final_bids, _ = pool.collect_bids(x, y, train_routing='label')
     assert final_bids[0] > raw_bids[0], "Conscience should increase expert 0 adjusted bid after frequent wins"
+    assert np.all(np.abs(pool.load_bias) <= max_bias + 1e-12), \
+        "Conscience load_bias must be clipped to [-conscience_max_bias, conscience_max_bias]"
+
+    # Force an overflow and verify clipping still enforces the cap.
+    pool.load_bias = np.array([0.2, -0.2, 0.2, -0.2], dtype=float)
+    pool.update_conscience_bias(0)
+    assert np.all(np.abs(pool.load_bias) <= max_bias + 1e-12), \
+        "Clipping should cap pre-existing oversized biases to max_bias"
 
 
 def test_conscience_backward_compat():
@@ -412,7 +422,8 @@ def test_conscience_params_configurable():
         'beta': 0.5,
         'lambda_ewc': 1.0,
         'use_conscience': True,
-        'conscience_decay': 1.0
+        'conscience_decay': 1.0,
+        'conscience_max_bias': 10.0
     }
     slow = ExpertPool(num_experts=4, expert_config={**common, 'conscience_rate': 0.01})
     fast = ExpertPool(num_experts=4, expert_config={**common, 'conscience_rate': 0.5})

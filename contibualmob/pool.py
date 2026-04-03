@@ -104,8 +104,9 @@ class ExpertPool:
         self.expert_win_counts = np.zeros(num_experts)
         self.total_auctions = 0
         self.use_conscience = expert_config.get('use_conscience', False)
-        self.conscience_rate = expert_config.get('conscience_rate', 0.01)
+        self.conscience_rate = expert_config.get('conscience_rate', 0.005)
         self.conscience_decay = expert_config.get('conscience_decay', 0.999)
+        self.conscience_max_bias = expert_config.get('conscience_max_bias', 0.1)
         self.seed_idle_prototypes_enabled = expert_config.get('seed_idle_prototypes', False)
         self.routing_temperature = expert_config.get('routing_temperature', 0.0)
         self.temp_min = expert_config.get('temp_min', 0.01)
@@ -304,6 +305,11 @@ class ExpertPool:
             self.load_bias[i] += self.conscience_rate * (actual_freq - target_freq)
 
         self.load_bias *= self.conscience_decay
+        self.load_bias = np.clip(
+            self.load_bias,
+            -self.conscience_max_bias,
+            self.conscience_max_bias
+        )
 
     def select_winner(
         self,

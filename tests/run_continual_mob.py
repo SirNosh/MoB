@@ -50,8 +50,9 @@ def run_continual_experiment(train_tasks, test_tasks, config):
         'lambda_ewc': config['lambda_ewc'],
         'forgetting_cost_scale': config.get('forgetting_cost_scale', 1.0),
         'use_conscience': config.get('use_conscience', False),
-        'conscience_rate': config.get('conscience_rate', 0.01),
+        'conscience_rate': config.get('conscience_rate', 0.005),
         'conscience_decay': config.get('conscience_decay', 0.999),
+        'conscience_max_bias': config.get('conscience_max_bias', 0.1),
         'seed_idle_prototypes': config.get('seed_idle_prototypes', False),
         'routing_temperature': config.get('routing_temperature', 0.0),
         'temp_min': config.get('temp_min', 0.01),
@@ -530,10 +531,12 @@ def main():
                         help='Batches of label-based warmup before switching to prototype routing')
     parser.add_argument('--use_conscience', action='store_true',
                         help='Enable conscience bias load-balancing in bid computation')
-    parser.add_argument('--conscience_rate', type=float, default=0.01,
-                        help='Conscience bias update rate (default: 0.01)')
+    parser.add_argument('--conscience_rate', type=float, default=0.005,
+                        help='Conscience bias update rate (default: 0.005)')
     parser.add_argument('--conscience_decay', type=float, default=0.999,
                         help='Conscience bias decay factor (default: 0.999)')
+    parser.add_argument('--conscience_max_bias', type=float, default=0.1,
+                        help='Maximum absolute conscience bias value (default: 0.1)')
     parser.add_argument('--seed_idle_prototypes', action='store_true',
                         help='Seed prototype stores for idle experts at prototype-routing switch')
     parser.add_argument('--routing_temperature', type=float, default=0.0,
@@ -572,6 +575,7 @@ def main():
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,
         'conscience_decay': args.conscience_decay,
+        'conscience_max_bias': args.conscience_max_bias,
         'seed_idle_prototypes': args.seed_idle_prototypes,
         'routing_temperature': args.routing_temperature,
         'temp_min': args.temp_min,

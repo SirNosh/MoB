@@ -1,0 +1,60 @@
+{
+  "seed": 42,
+  "experiment_name": "experiments_v3/v3_vgentle_cons_seed",
+  "config": {
+    "num_experts": 4,
+    "num_tasks": 5,
+    "alpha": 0.5,
+    "beta": 0.5,
+    "lambda_ewc": 1000.0,
+    "learning_rate": 0.001,
+    "forgetting_cost_scale": 1.0,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4,
+    "use_lwf": false,
+    "lwf_temperature": 2.0,
+    "lwf_alpha": 0.1,
+    "bid_formula": "addition",
+    "reset_optimizer": false,
+    "idle_threshold": 100,
+    "routing_strategy": "pseudo_label",
+    "top_k": 1,
+    "per_sample": false,
+    "temperature": 1.0,
+    "eval_bid_mode": "full",
+    "train_routing": "prototype",
+    "train_routing_warmup": 1000,
+    "use_conscience": true,
+    "conscience_rate": 0.001,
+    "conscience_decay": 0.999,
+    "conscience_max_bias": 0.05,
+    "seed_idle_prototypes": true,
+    "routing_temperature": 0.0,
+    "temp_min": 0.01,
+    "temp_decay": 0.995
+  },
+  "task_accuracies": [
+    0.9990543735224586,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "final_accuracies": [
+    0.9981087446212769,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "avg_accuracy": 0.19962174892425538,
+  "forgetting": 0.000236407225295443,
+  "expert_task_wins": {
+    "0": 2,
+    "1": 1,
+    "2": 1,
+    "3": 0,
+    "4": 1
+  }
+}
