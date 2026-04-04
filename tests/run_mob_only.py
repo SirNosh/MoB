@@ -82,6 +82,8 @@ class MoBExpertLocal:
         lwf_alpha: float = 0.1,  # Weight for distillation loss (< 0.3 recommended)
         # Bid formula: 'addition' or 'subtraction'
         bid_formula: str = 'addition',
+        online_mahalanobis: bool = False,
+        inv_cov_update_interval: int = 50,
     ):
         self.expert_id = expert_id
         self.model = model
@@ -118,6 +120,8 @@ class MoBExpertLocal:
         self.use_lwf = use_lwf
         self.lwf_temperature = lwf_temperature
         self.lwf_alpha = lwf_alpha
+        self.online_mahalanobis = online_mahalanobis
+        self.inv_cov_update_interval = inv_cov_update_interval
 
         # Storage for soft targets (computed before each task)
         # Maps batch_idx -> soft_targets tensor
@@ -263,7 +267,9 @@ class MoBExpertLocal:
             if self.prototype_store is None:
                 self.prototype_store = PrototypeStore(
                     feature_dim=features.shape[1],
-                    device=self.device
+                    device=self.device,
+                    online_mahalanobis=self.online_mahalanobis,
+                    inv_cov_update_interval=self.inv_cov_update_interval
                 )
 
             self.prototype_store.update(features.detach(), y)
@@ -382,6 +388,8 @@ class ExpertPoolLocal:
                 lwf_alpha=expert_config.get('lwf_alpha', 0.1),
                 # Bid formula
                 bid_formula=expert_config.get('bid_formula', 'addition'),
+                online_mahalanobis=expert_config.get('online_mahalanobis', False),
+                inv_cov_update_interval=expert_config.get('inv_cov_update_interval', 50),
             )
             self.experts.append(expert)
 
@@ -418,7 +426,9 @@ class ExpertPoolLocal:
             if expert.prototype_store is None:
                 expert.prototype_store = PrototypeStore(
                     feature_dim=features.shape[1],
-                    device=self.device
+                    device=self.device,
+                    online_mahalanobis=expert.online_mahalanobis,
+                    inv_cov_update_interval=expert.inv_cov_update_interval
                 )
 
             expert.prototype_store.update(features.detach(), pseudo_labels)
@@ -912,6 +922,8 @@ def run_experiment(train_tasks, test_tasks, config):
         'routing_temperature': config.get('routing_temperature', 0.0),
         'temp_min': config.get('temp_min', 0.01),
         'temp_decay': config.get('temp_decay', 0.995),
+        'online_mahalanobis': config.get('online_mahalanobis', False),
+        'inv_cov_update_interval': config.get('inv_cov_update_interval', 50),
         'dropout': 0.5
     }
 
@@ -1390,6 +1402,8 @@ def main():
                         help='Minimum routing temperature before deterministic argmin')
     parser.add_argument('--temp_decay', type=float, default=0.995,
                         help='Per-batch decay factor for routing temperature')
+    parser.add_argument('--online_mahalanobis', action='store_true',
+                        help='Enable online Mahalanobis updates during training-time prototype routing')
     parser.add_argument('--min_batches_fisher', type=int, default=100,
                         help='Minimum wins in a task required to update Fisher (default: 100)')
 
@@ -1445,6 +1459,7 @@ def main():
         'routing_temperature': args.routing_temperature,
         'temp_min': args.temp_min,
         'temp_decay': args.temp_decay,
+        'online_mahalanobis': args.online_mahalanobis,
         'min_batches_fisher': args.min_batches_fisher,
     }
 

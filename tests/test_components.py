@@ -9,6 +9,7 @@ import os
 import torch
 import numpy as np
 import types
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -618,6 +619,78 @@ def test_temperature_backward_compat():
     ]
     assert all(w == 0 for w in eval_winners), "Eval routing must remain deterministic argmin"
     assert eval_pool.current_temperature == 5.0, "Eval routing should not decay temperature"
+
+
+def test_online_mahalanobis_disabled_until_finalize():
+    """Default behavior: no Mahalanobis during updates, available after finalize."""
+    from contibualmob.prototype_store import PrototypeStore
+
+    store = PrototypeStore(feature_dim=8, device=torch.device('cpu'))
+    x = torch.randn(256, 8)
+    y = torch.randint(0, 2, (256,))
+
+    store.update(x, y)
+    assert store.inv_cov is None, "Default mode should keep Euclidean routing during training updates"
+
+    store.finalize()
+    assert store.inv_cov is not None, "Finalize should compute inverse covariance when enough samples exist"
+
+
+def test_online_mahalanobis_computes_inv_cov_during_update():
+    """Online Mahalanobis should compute inverse covariance once threshold is reached."""
+    from contibualmob.prototype_store import PrototypeStore
+
+    store = PrototypeStore(
+        feature_dim=8,
+        device=torch.device('cpu'),
+        online_mahalanobis=True,
+        inv_cov_update_interval=1
+    )
+    x = torch.randn(256, 8)
+    y = torch.randint(0, 3, (256,))
+
+    store.update(x, y)
+    assert store.inv_cov is not None, "Online mode should enable Mahalanobis during training updates"
+
+
+def test_online_mahalanobis_respects_update_interval():
+    """Inverse covariance recomputation should occur only on configured intervals."""
+    from contibualmob.prototype_store import PrototypeStore
+
+    store = PrototypeStore(
+        feature_dim=8,
+        device=torch.device('cpu'),
+        online_mahalanobis=True,
+        inv_cov_update_interval=3
+    )
+    y = torch.randint(0, 2, (128,))
+
+    store.update(torch.randn(128, 8), y)  # step 1, cov_count=128
+    store.update(torch.randn(128, 8), y)  # step 2, cov_count=256
+    assert store.inv_cov is None, "Should wait for update interval before recomputing inverse covariance"
+
+    store.update(torch.randn(128, 8), y)  # step 3, cov_count=384
+    assert store.inv_cov is not None, "Should recompute inverse covariance on configured update interval"
+
+
+def test_online_mahalanobis_falls_back_on_inv_failure(monkeypatch):
+    """If inverse covariance computation fails, routing should fall back to Euclidean."""
+    from contibualmob.prototype_store import PrototypeStore
+
+    store = PrototypeStore(
+        feature_dim=8,
+        device=torch.device('cpu'),
+        online_mahalanobis=True,
+        inv_cov_update_interval=1
+    )
+
+    def _raise_linalg_error(_):
+        raise torch.linalg.LinAlgError("singular")
+
+    monkeypatch.setattr(torch.linalg, 'inv', _raise_linalg_error)
+
+    store.update(torch.randn(256, 8), torch.randint(0, 2, (256,)))
+    assert store.inv_cov is None, "Online Mahalanobis should fall back to Euclidean on inverse failure"
 
 
 def test_combined_mechanisms():
