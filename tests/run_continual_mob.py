@@ -33,6 +33,23 @@ from contibualmob.utils import set_seed
 from tests.test_baselines import create_split_mnist
 
 
+def resolve_stream_train_routing(
+    train_routing: str,
+    train_warmup_mode: str,
+    batch_idx: int,
+    train_routing_warmup: int,
+    first_task_boundary_batch: int
+) -> str:
+    """Resolve training routing mode for continual stream runner."""
+    if train_routing != 'prototype':
+        return 'label'
+
+    if train_warmup_mode == 'task':
+        return 'label' if batch_idx < first_task_boundary_batch else 'prototype'
+
+    return 'prototype' if batch_idx >= train_routing_warmup else 'label'
+
+
 def run_continual_experiment(train_tasks, test_tasks, config):
     print("\n" + "="*70)
     print("CONTINUAL MoB Experiment (Task-Free / Digit-Granular)")
@@ -127,18 +144,74 @@ def run_continual_experiment(train_tasks, test_tasks, config):
     pbar = tqdm(stream_loader, desc="Learning from Stream")
     
     train_routing = config.get('train_routing', 'label')
+    train_warmup_mode = config.get('train_warmup_mode', 'batches')
     train_routing_warmup = config.get('train_routing_warmup', 1000)
+    first_task_boundary_batch = len(train_tasks[0]) * epochs_per_task if train_tasks else 0
     prototype_routing_active = False
+    task_warmup_switched = False
+    first_task_winner_counts = defaultdict(int)
 
     for batch_idx, (x, y) in enumerate(pbar):
         # 1. Auction Phase
-        # Experiment 3: Switch to prototype routing after warmup
-        current_routing = 'label'
-        if train_routing == 'prototype' and batch_idx >= train_routing_warmup:
-            current_routing = 'prototype'
-            if not prototype_routing_active:
+        current_routing = resolve_stream_train_routing(
+            train_routing=train_routing,
+            train_warmup_mode=train_warmup_mode,
+            batch_idx=batch_idx,
+            train_routing_warmup=train_routing_warmup,
+            first_task_boundary_batch=first_task_boundary_batch
+        )
+
+        if (
+            train_routing == 'prototype'
+            and train_warmup_mode == 'task'
+            and not task_warmup_switched
+            and batch_idx >= first_task_boundary_batch
+        ):
+            tqdm.write("\n>>> Task warmup boundary reached: finalizing monopolist expert for Mahalanobis routing")
+            if first_task_winner_counts:
+                monopolist_id, monopolist_wins = max(
+                    first_task_winner_counts.items(),
+                    key=lambda kv: kv[1]
+                )
+                tqdm.write(f"    Monopolist expert: Expert {monopolist_id} ({monopolist_wins} wins)")
+                pool.experts[monopolist_id].consolidate(train_tasks[0], num_samples=200)
+
+                if config.get('reset_optimizer', False):
+                    optimizers[monopolist_id] = torch.optim.Adam(
+                        pool.experts[monopolist_id].model.parameters(),
+                        lr=config['learning_rate']
+                    )
+                    tqdm.write(f"    [Optimizer Reset] Reset optimizer for expert {monopolist_id}")
+
+                expert = pool.experts[monopolist_id]
+                if expert.prototype_store is not None:
+                    ps = expert.prototype_store
+                    bid_logger.log_prototype_finalize(
+                        expert_id=monopolist_id,
+                        event='task_1_warmup_end',
+                        batch_idx=batch_idx,
+                        classes_seen=list(ps.class_count.keys()),
+                        sample_counts=dict(ps.class_count),
+                        has_mahalanobis=(ps.inv_cov is not None),
+                        feature_dim=ps.feature_dim
+                    )
+            else:
+                tqdm.write("    No winners recorded in first task warmup; skipping warmup boundary finalize.")
+
+            if config.get('seed_idle_prototypes', False):
+                seeded_count = pool.seed_idle_prototypes(x, y)
+                if seeded_count > 0:
+                    pool._prototypes_seeded = True
+                tqdm.write(f"    [Prototype Seeding @ switch] Seeded {seeded_count} idle experts")
+
+            task_warmup_switched = True
+
+        if current_routing == 'prototype' and not prototype_routing_active:
+            if train_warmup_mode == 'task':
+                tqdm.write(f"\n>>> Switching to PROTOTYPE training routing at first task boundary (batch {batch_idx})")
+            else:
                 tqdm.write(f"\n>>> Switching to PROTOTYPE training routing at batch {batch_idx}")
-                prototype_routing_active = True
+            prototype_routing_active = True
 
         bids, components = pool.collect_bids(x, y, train_routing=current_routing)
         winner_id = pool.select_winner(
@@ -146,6 +219,13 @@ def run_continual_experiment(train_tasks, test_tasks, config):
             train_routing=current_routing,
             is_training=True
         )
+
+        if (
+            train_routing == 'prototype'
+            and train_warmup_mode == 'task'
+            and batch_idx < first_task_boundary_batch
+        ):
+            first_task_winner_counts[winner_id] += 1
         if len(bids) > 1:
             payment = float(np.partition(bids, 1)[1])
         else:
@@ -541,8 +621,11 @@ def main():
     parser.add_argument('--train_routing', type=str, default='label',
                         choices=['label', 'prototype'],
                         help='Training routing: label (default) or prototype (after warmup)')
+    parser.add_argument('--train_warmup_mode', type=str, default='batches',
+                        choices=['batches', 'task'],
+                        help='Warmup switch mode: batches (switch after --train_routing_warmup) or task (switch after first task boundary)')
     parser.add_argument('--train_routing_warmup', type=int, default=1000,
-                        help='Batches of label-based warmup before switching to prototype routing')
+                        help='Batches of label-based warmup before switching to prototype routing (used when --train_warmup_mode=batches)')
     parser.add_argument('--use_conscience', action='store_true',
                         help='Enable conscience bias load-balancing in bid computation')
     parser.add_argument('--conscience_rate', type=float, default=0.005,
@@ -587,6 +670,7 @@ def main():
         'temperature': args.temperature,
         'eval_bid_mode': args.eval_bid_mode,
         'train_routing': args.train_routing,
+        'train_warmup_mode': args.train_warmup_mode,
         'train_routing_warmup': args.train_routing_warmup,
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,

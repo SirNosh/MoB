@@ -783,6 +783,22 @@ class ExpertPoolLocal:
 # Note: Optimizer reset now happens at task END, not during training.
 # This is simpler and more effective for task-aware continual learning.
 
+def resolve_task_aware_train_routing(
+    train_routing: str,
+    train_warmup_mode: str,
+    task_id: int,
+    global_batch_idx: int,
+    train_routing_warmup: int
+) -> str:
+    """Resolve training routing mode for task-aware runner."""
+    if train_routing != 'prototype':
+        return 'label'
+
+    if train_warmup_mode == 'task':
+        return 'label' if task_id == 0 else 'prototype'
+
+    return 'prototype' if global_batch_idx >= train_routing_warmup else 'label'
+
 
 def run_experiment(train_tasks, test_tasks, config):
     """Run MoB experiment with local classes."""
@@ -849,6 +865,7 @@ def run_experiment(train_tasks, test_tasks, config):
     global_batch_idx = 0
     epochs_per_task = config.get('epochs_per_task', 4)
     train_routing = config.get('train_routing', 'label')
+    train_warmup_mode = config.get('train_warmup_mode', 'batches')
     train_routing_warmup = config.get('train_routing_warmup', 1000)
     prototype_routing_active = False
 
@@ -889,13 +906,19 @@ def run_experiment(train_tasks, test_tasks, config):
 
             pbar = tqdm(task_loader, desc=f"Epoch {epoch+1}/{epochs_per_task}", leave=False)
             for x, y in pbar:
-                # Experiment 3: Switch to prototype routing after warmup
-                current_routing = 'label'
-                if train_routing == 'prototype' and global_batch_idx >= train_routing_warmup:
-                    current_routing = 'prototype'
-                    if not prototype_routing_active:
+                current_routing = resolve_task_aware_train_routing(
+                    train_routing=train_routing,
+                    train_warmup_mode=train_warmup_mode,
+                    task_id=task_id,
+                    global_batch_idx=global_batch_idx,
+                    train_routing_warmup=train_routing_warmup
+                )
+                if current_routing == 'prototype' and not prototype_routing_active:
+                    if train_warmup_mode == 'task':
+                        print(f"\n>>> Switching to PROTOTYPE training routing at task boundary (start of task {task_id + 1})")
+                    else:
                         print(f"\n>>> Switching to PROTOTYPE training routing at batch {global_batch_idx}")
-                        prototype_routing_active = True
+                    prototype_routing_active = True
 
                 # Collect bids
                 bids, components = pool.collect_bids(x, y, train_routing=current_routing)
@@ -942,32 +965,74 @@ def run_experiment(train_tasks, test_tasks, config):
             print(f"  Primary expert: Expert {primary} ({pct:.1f}%)")
             expert_task_wins[task_id] = primary
 
-        # Update Fisher and finalize prototypes only for experts with enough wins
         min_batches_fisher = config.get('min_batches_fisher', 100)
         fisher_updated_experts = []
         fisher_skipped_experts = []
-        print(f"\n  Updating Fisher for experts with >= {min_batches_fisher} wins")
-        for eid, count in sorted(winners_this_task.items()):
-            if count >= min_batches_fisher:
-                pool.experts[eid].update_after_task(task_loader, num_samples=200)
-                fisher_updated_experts.append(eid)
+        use_task_boundary_switch = (
+            train_routing == 'prototype'
+            and train_warmup_mode == 'task'
+            and task_id == 0
+        )
 
-                # Log prototype state after finalization
-                expert = pool.experts[eid]
+        if use_task_boundary_switch:
+            print("\n  Task warmup boundary reached: finalizing monopolist expert for Mahalanobis routing")
+            if winners_this_task:
+                monopolist_eid, monopolist_wins = max(
+                    winners_this_task.items(),
+                    key=lambda kv: kv[1]
+                )
+                print(f"  Monopolist expert: Expert {monopolist_eid} ({monopolist_wins} wins)")
+                pool.experts[monopolist_eid].update_after_task(task_loader, num_samples=200)
+                fisher_updated_experts.append(monopolist_eid)
+
+                expert = pool.experts[monopolist_eid]
                 if expert.prototype_store is not None:
                     ps = expert.prototype_store
                     bid_logger.log_prototype_finalize(
-                        expert_id=eid,
-                        event=f'task_{task_id+1}_end',
+                        expert_id=monopolist_eid,
+                        event='task_1_warmup_end',
                         batch_idx=global_batch_idx,
                         classes_seen=list(ps.class_count.keys()),
                         sample_counts=dict(ps.class_count),
                         has_mahalanobis=(ps.inv_cov is not None),
                         feature_dim=ps.feature_dim
                     )
+
+                for eid, count in sorted(winners_this_task.items()):
+                    if eid != monopolist_eid:
+                        fisher_skipped_experts.append({'expert_id': eid, 'wins': count})
             else:
-                print(f"Expert {eid} won only {count} batches in this task, skipping Fisher update")
-                fisher_skipped_experts.append({'expert_id': eid, 'wins': count})
+                print("  No winners recorded in task 1; skipping warmup boundary finalize.")
+
+            if config.get('seed_idle_prototypes', False):
+                seeded_count = pool.seed_idle_prototypes()
+                if seeded_count > 0:
+                    pool._prototypes_seeded = True
+                print(f"  [Prototype Seeding @ switch] Seeded {seeded_count} idle experts")
+        else:
+            # Update Fisher and finalize prototypes only for experts with enough wins
+            print(f"\n  Updating Fisher for experts with >= {min_batches_fisher} wins")
+            for eid, count in sorted(winners_this_task.items()):
+                if count >= min_batches_fisher:
+                    pool.experts[eid].update_after_task(task_loader, num_samples=200)
+                    fisher_updated_experts.append(eid)
+
+                    # Log prototype state after finalization
+                    expert = pool.experts[eid]
+                    if expert.prototype_store is not None:
+                        ps = expert.prototype_store
+                        bid_logger.log_prototype_finalize(
+                            expert_id=eid,
+                            event=f'task_{task_id+1}_end',
+                            batch_idx=global_batch_idx,
+                            classes_seen=list(ps.class_count.keys()),
+                            sample_counts=dict(ps.class_count),
+                            has_mahalanobis=(ps.inv_cov is not None),
+                            feature_dim=ps.feature_dim
+                        )
+                else:
+                    print(f"Expert {eid} won only {count} batches in this task, skipping Fisher update")
+                    fisher_skipped_experts.append({'expert_id': eid, 'wins': count})
 
         if fisher_updated_experts:
             print(f"  Fisher updated experts: {fisher_updated_experts}")
@@ -1179,8 +1244,11 @@ def main():
     parser.add_argument('--train_routing', type=str, default='label',
                         choices=['label', 'prototype'],
                         help='Training routing: label (default) or prototype (after warmup)')
+    parser.add_argument('--train_warmup_mode', type=str, default='batches',
+                        choices=['batches', 'task'],
+                        help='Warmup switch mode: batches (switch after --train_routing_warmup) or task (switch after first task boundary)')
     parser.add_argument('--train_routing_warmup', type=int, default=1000,
-                        help='Batches of label-based warmup before switching to prototype routing')
+                        help='Batches of label-based warmup before switching to prototype routing (used when --train_warmup_mode=batches)')
     parser.add_argument('--use_conscience', action='store_true',
                         help='Enable conscience bias load-balancing in bid computation')
     parser.add_argument('--conscience_rate', type=float, default=0.005,
@@ -1230,6 +1298,7 @@ def main():
         'temperature': args.temperature,
         'eval_bid_mode': args.eval_bid_mode,
         'train_routing': args.train_routing,
+        'train_warmup_mode': args.train_warmup_mode,
         'train_routing_warmup': args.train_routing_warmup,
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,

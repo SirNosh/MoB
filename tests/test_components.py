@@ -669,6 +669,38 @@ def test_combined_mechanisms():
     assert wins.max() / wins.sum() < 0.95, "Routing distribution should remain reasonably spread"
 
 
+def test_task_warmup_mode_switch_logic_task_aware():
+    """Task-aware warmup mode should keep task 0 on labels, then switch to prototype."""
+    from tests.run_mob_only import resolve_task_aware_train_routing
+
+    # Prototype routing disabled => always label
+    assert resolve_task_aware_train_routing('label', 'task', task_id=0, global_batch_idx=500, train_routing_warmup=100) == 'label'
+
+    # Batch warmup mode => old behavior
+    assert resolve_task_aware_train_routing('prototype', 'batches', task_id=0, global_batch_idx=99, train_routing_warmup=100) == 'label'
+    assert resolve_task_aware_train_routing('prototype', 'batches', task_id=0, global_batch_idx=100, train_routing_warmup=100) == 'prototype'
+
+    # Task warmup mode => full task 0 label, task 1+ prototype
+    assert resolve_task_aware_train_routing('prototype', 'task', task_id=0, global_batch_idx=9999, train_routing_warmup=0) == 'label'
+    assert resolve_task_aware_train_routing('prototype', 'task', task_id=1, global_batch_idx=0, train_routing_warmup=9999) == 'prototype'
+
+
+def test_task_warmup_mode_switch_logic_continual():
+    """Continual warmup mode should switch at first-task boundary when mode=task."""
+    from tests.run_continual_mob import resolve_stream_train_routing
+
+    # Prototype routing disabled => always label
+    assert resolve_stream_train_routing('label', 'task', batch_idx=500, train_routing_warmup=100, first_task_boundary_batch=400) == 'label'
+
+    # Batch warmup mode => old behavior
+    assert resolve_stream_train_routing('prototype', 'batches', batch_idx=99, train_routing_warmup=100, first_task_boundary_batch=400) == 'label'
+    assert resolve_stream_train_routing('prototype', 'batches', batch_idx=100, train_routing_warmup=100, first_task_boundary_batch=400) == 'prototype'
+
+    # Task warmup mode => switch at first-task boundary
+    assert resolve_stream_train_routing('prototype', 'task', batch_idx=399, train_routing_warmup=0, first_task_boundary_batch=400) == 'label'
+    assert resolve_stream_train_routing('prototype', 'task', batch_idx=400, train_routing_warmup=9999, first_task_boundary_batch=400) == 'prototype'
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)

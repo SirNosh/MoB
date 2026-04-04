@@ -1,0 +1,139 @@
+{
+  "seed": 123,
+  "experiment_name": "experiments_v3/v3_task_warmup_seed_s123",
+  "config": {
+    "num_experts": 4,
+    "num_tasks": 5,
+    "alpha": 0.5,
+    "beta": 0.5,
+    "lambda_ewc": 1000.0,
+    "learning_rate": 0.001,
+    "forgetting_cost_scale": 1.0,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4,
+    "use_lwf": false,
+    "lwf_temperature": 2.0,
+    "lwf_alpha": 0.1,
+    "bid_formula": "addition",
+    "reset_optimizer": true,
+    "idle_threshold": 100,
+    "routing_strategy": "pseudo_label",
+    "top_k": 1,
+    "per_sample": false,
+    "temperature": 1.0,
+    "eval_bid_mode": "full",
+    "train_routing": "prototype",
+    "train_warmup_mode": "task",
+    "train_routing_warmup": 1000,
+    "use_conscience": false,
+    "conscience_rate": 0.005,
+    "conscience_decay": 0.999,
+    "conscience_max_bias": 0.1,
+    "seed_idle_prototypes": true,
+    "routing_temperature": 0.0,
+    "temp_min": 0.01,
+    "temp_decay": 0.995,
+    "min_batches_fisher": 100
+  },
+  "task_accuracies": [
+    0.9995271867612293,
+    0.9813907933398629,
+    0.5944503735325507,
+    0.8086606243705942,
+    0.6333837619768028
+  ],
+  "final_accuracies": [
+    0.0,
+    0.6611165404319763,
+    0.5816435217857361,
+    0.0005035246722400188,
+    0.27433180809020996
+  ],
+  "avg_accuracy": 0.3035190789960325,
+  "forgetting": 0.5351913477785711,
+  "expert_task_wins": {
+    "0": 1,
+    "1": 2,
+    "2": 3,
+    "3": 3,
+    "4": 3
+  },
+  "fisher_update_stats": [
+    {
+      "task_id": 0,
+      "winner_counts": {
+        "1": 1584
+      },
+      "updated_experts": [
+        1
+      ],
+      "skipped_experts": [],
+      "min_batches_fisher": 100
+    },
+    {
+      "task_id": 1,
+      "winner_counts": {
+        "0": 509,
+        "2": 587,
+        "3": 416
+      },
+      "updated_experts": [
+        0,
+        2,
+        3
+      ],
+      "skipped_experts": [],
+      "min_batches_fisher": 100
+    },
+    {
+      "task_id": 2,
+      "winner_counts": {
+        "0": 6,
+        "1": 7,
+        "2": 6,
+        "3": 1389
+      },
+      "updated_experts": [
+        3
+      ],
+      "skipped_experts": [
+        {
+          "expert_id": 0,
+          "wins": 6
+        },
+        {
+          "expert_id": 1,
+          "wins": 7
+        },
+        {
+          "expert_id": 2,
+          "wins": 6
+        }
+      ],
+      "min_batches_fisher": 100
+    },
+    {
+      "task_id": 3,
+      "winner_counts": {
+        "3": 1524
+      },
+      "updated_experts": [
+        3
+      ],
+      "skipped_experts": [],
+      "min_batches_fisher": 100
+    },
+    {
+      "task_id": 4,
+      "winner_counts": {
+        "3": 1476
+      },
+      "updated_experts": [
+        3
+      ],
+      "skipped_experts": [],
+      "min_batches_fisher": 100
+    }
+  ]
+}
