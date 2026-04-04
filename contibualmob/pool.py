@@ -194,7 +194,8 @@ class ExpertPool:
         self,
         x: torch.Tensor,
         y: torch.Tensor,
-        train_routing: str = 'label'
+        train_routing: str = 'label',
+        blend_ratio: Optional[float] = None
     ) -> Tuple[np.ndarray, List[Dict]]:
         """
         Gathers bids from all experts for a given batch.
@@ -210,9 +211,18 @@ class ExpertPool:
         """
         import math
 
+        effective_blend = None
+        if train_routing == 'prototype' and blend_ratio is not None:
+            effective_blend = float(np.clip(blend_ratio, 0.0, 1.0))
+
         if train_routing == 'prototype':
             # Experiment 3: Prototype-distance-based training routing
-            if self.seed_idle_prototypes_enabled and not self._prototypes_seeded:
+            prototype_signal_active = (effective_blend is None) or (effective_blend > 0.0)
+            if (
+                prototype_signal_active
+                and self.seed_idle_prototypes_enabled
+                and not self._prototypes_seeded
+            ):
                 idle_exists = any(not self._expert_has_prototypes(expert) for expert in self.experts)
                 if idle_exists:
                     seeded_count = self.seed_idle_prototypes()
@@ -225,7 +235,25 @@ class ExpertPool:
             bids = np.zeros(self.num_experts)
             components = []
             for i, expert in enumerate(self.experts):
-                expert.total_batches_seen += 1
+                bias = self.load_bias[i] if self.use_conscience else 0.0
+
+                # Blend edge: 0.0 = pure label routing
+                if effective_blend is not None and effective_blend <= 0.0:
+                    label_bid, label_comp = expert.compute_bid(x, y)
+                    final_bid = label_bid + bias
+                    label_comp['bid'] = final_bid
+                    label_comp['routing'] = 'label_blend'
+                    label_comp['blend_ratio'] = effective_blend
+                    label_comp['label_bid'] = final_bid
+                    label_comp['prototype_bid'] = final_bid
+                    bids[i] = final_bid
+                    components.append(label_comp)
+                    continue
+
+                # For prototype-only routing we increment here.
+                # For blended routing (<1.0), expert.compute_bid() increments the counter.
+                if effective_blend is None or effective_blend >= 1.0:
+                    expert.total_batches_seen += 1
 
                 # Check if prototype routing is available for this expert
                 has_prototypes = self._expert_has_prototypes(expert) and hasattr(expert.model, 'forward_features')
@@ -254,24 +282,52 @@ class ExpertPool:
 
                 norm_distance = distance_score / 10.0
                 norm_forget = math.log1p(raw_forget) / 10.0
-                bid = expert.alpha * norm_distance + expert.beta * norm_forget
+                prototype_bid = expert.alpha * norm_distance + expert.beta * norm_forget
 
-                if self.use_conscience:
-                    adjusted_bid = bid + self.load_bias[i]
-                    comp_bid = adjusted_bid
+                if effective_blend is not None and effective_blend < 1.0:
+                    label_bid, label_comp = expert.compute_bid(x, y)
+                    blended_raw = (
+                        (1.0 - effective_blend) * label_bid +
+                        effective_blend * prototype_bid
+                    )
+                    comp_bid = blended_raw + bias
+                    comp = {
+                        'exec_cost': (
+                            (1.0 - effective_blend) * label_comp['exec_cost'] +
+                            effective_blend * distance_score
+                        ),
+                        'forget_cost': (
+                            (1.0 - effective_blend) * label_comp['forget_cost'] +
+                            effective_blend * raw_forget
+                        ),
+                        'norm_exec_cost': (
+                            (1.0 - effective_blend) * label_comp['norm_exec_cost'] +
+                            effective_blend * norm_distance
+                        ),
+                        'norm_forget_cost': (
+                            (1.0 - effective_blend) * label_comp['norm_forget_cost'] +
+                            effective_blend * norm_forget
+                        ),
+                        'bid': comp_bid,
+                        'alpha': expert.alpha,
+                        'beta': expert.beta,
+                        'routing': 'blend',
+                        'blend_ratio': effective_blend,
+                        'label_bid': label_bid + bias,
+                        'prototype_bid': prototype_bid + bias
+                    }
                 else:
-                    comp_bid = bid
-
-                comp = {
-                    'exec_cost': distance_score,
-                    'forget_cost': raw_forget,
-                    'norm_exec_cost': norm_distance,
-                    'norm_forget_cost': norm_forget,
-                    'bid': comp_bid,
-                    'alpha': expert.alpha,
-                    'beta': expert.beta,
-                    'routing': routing_tag
-                }
+                    comp_bid = prototype_bid + bias
+                    comp = {
+                        'exec_cost': distance_score,
+                        'forget_cost': raw_forget,
+                        'norm_exec_cost': norm_distance,
+                        'norm_forget_cost': norm_forget,
+                        'bid': comp_bid,
+                        'alpha': expert.alpha,
+                        'beta': expert.beta,
+                        'routing': routing_tag
+                    }
 
                 bids[i] = comp_bid
                 components.append(comp)

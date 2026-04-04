@@ -427,7 +427,8 @@ class ExpertPoolLocal:
         return seeded
 
     def collect_bids(self, x: torch.Tensor, y: torch.Tensor,
-                     train_routing: str = 'label') -> Tuple[np.ndarray, List[Dict]]:
+                     train_routing: str = 'label',
+                     blend_ratio: Optional[float] = None) -> Tuple[np.ndarray, List[Dict]]:
         """Collect bids from all experts.
 
         Args:
@@ -435,8 +436,13 @@ class ExpertPoolLocal:
         """
         import math
 
+        effective_blend = None
+        if train_routing == 'prototype' and blend_ratio is not None:
+            effective_blend = float(np.clip(blend_ratio, 0.0, 1.0))
+
         if train_routing == 'prototype':
-            if self.seed_idle_prototypes_enabled and not self._prototypes_seeded:
+            prototype_signal_active = (effective_blend is None) or (effective_blend > 0.0)
+            if prototype_signal_active and self.seed_idle_prototypes_enabled and not self._prototypes_seeded:
                 idle_exists = any(not self._expert_has_prototypes(expert) for expert in self.experts)
                 if idle_exists:
                     seeded_count = self.seed_idle_prototypes()
@@ -449,7 +455,23 @@ class ExpertPoolLocal:
             bids = np.zeros(self.num_experts)
             components = []
             for i, expert in enumerate(self.experts):
-                expert.total_batches_seen += 1
+                bias = self.load_bias[i] if self.use_conscience else 0.0
+
+                # Blend edge: pure label routing
+                if effective_blend is not None and effective_blend <= 0.0:
+                    label_bid, label_comp = expert.compute_bid(x, y)
+                    final_bid = label_bid + bias
+                    label_comp['bid'] = final_bid
+                    label_comp['routing'] = 'label_blend'
+                    label_comp['blend_ratio'] = effective_blend
+                    label_comp['label_bid'] = final_bid
+                    label_comp['prototype_bid'] = final_bid
+                    bids[i] = final_bid
+                    components.append(label_comp)
+                    continue
+
+                if effective_blend is None or effective_blend >= 1.0:
+                    expert.total_batches_seen += 1
 
                 has_prototypes = self._expert_has_prototypes(expert) and hasattr(expert.model, 'forward_features')
 
@@ -478,22 +500,54 @@ class ExpertPoolLocal:
                 )
                 norm_distance = distance_score / 10.0
                 norm_forget = math.log1p(raw_forget) / 10.0
-                bid = expert.alpha * norm_distance + expert.beta * norm_forget
-                if self.use_conscience:
-                    bid = bid + self.load_bias[i]
+                prototype_bid = expert.alpha * norm_distance + expert.beta * norm_forget
 
-                comp = {
-                    'exec_cost': distance_score,
-                    'forget_cost': raw_forget,
-                    'norm_exec_cost': norm_distance,
-                    'norm_forget_cost': norm_forget,
-                    'bid': bid,
-                    'alpha': expert.alpha,
-                    'beta': expert.beta,
-                    'routing': routing_tag
-                }
+                if effective_blend is not None and effective_blend < 1.0:
+                    label_bid, label_comp = expert.compute_bid(x, y)
+                    blended_raw = (
+                        (1.0 - effective_blend) * label_bid +
+                        effective_blend * prototype_bid
+                    )
+                    final_bid = blended_raw + bias
+                    comp = {
+                        'exec_cost': (
+                            (1.0 - effective_blend) * label_comp['exec_cost'] +
+                            effective_blend * distance_score
+                        ),
+                        'forget_cost': (
+                            (1.0 - effective_blend) * label_comp['forget_cost'] +
+                            effective_blend * raw_forget
+                        ),
+                        'norm_exec_cost': (
+                            (1.0 - effective_blend) * label_comp['norm_exec_cost'] +
+                            effective_blend * norm_distance
+                        ),
+                        'norm_forget_cost': (
+                            (1.0 - effective_blend) * label_comp['norm_forget_cost'] +
+                            effective_blend * norm_forget
+                        ),
+                        'bid': final_bid,
+                        'alpha': expert.alpha,
+                        'beta': expert.beta,
+                        'routing': 'blend',
+                        'blend_ratio': effective_blend,
+                        'label_bid': label_bid + bias,
+                        'prototype_bid': prototype_bid + bias
+                    }
+                else:
+                    final_bid = prototype_bid + bias
+                    comp = {
+                        'exec_cost': distance_score,
+                        'forget_cost': raw_forget,
+                        'norm_exec_cost': norm_distance,
+                        'norm_forget_cost': norm_forget,
+                        'bid': final_bid,
+                        'alpha': expert.alpha,
+                        'beta': expert.beta,
+                        'routing': routing_tag
+                    }
 
-                bids[i] = bid
+                bids[i] = final_bid
                 components.append(comp)
             return bids, components
         else:
@@ -800,6 +854,32 @@ def resolve_task_aware_train_routing(
     return 'prototype' if global_batch_idx >= train_routing_warmup else 'label'
 
 
+def compute_routing_blend_ratio(
+    blend_enabled: bool,
+    blend_start: float,
+    blend_end: float,
+    global_batch_idx: int,
+    warmup_end_batch: int,
+    total_batches: int
+) -> Optional[float]:
+    """
+    Compute linear routing blend ratio after warmup.
+
+    progress = batches_since_warmup / remaining_batches
+    blend = start + (end - start) * progress
+    """
+    if not blend_enabled:
+        return None
+
+    clamped_start = float(np.clip(blend_start, 0.0, 1.0))
+    clamped_end = float(np.clip(blend_end, 0.0, 1.0))
+    warmup_end = max(0, int(warmup_end_batch))
+    remaining_batches = max(1, int(total_batches) - warmup_end)
+    batches_since_warmup = max(0, int(global_batch_idx) - warmup_end)
+    progress = min(1.0, batches_since_warmup / remaining_batches)
+    return clamped_start + (clamped_end - clamped_start) * progress
+
+
 def run_experiment(train_tasks, test_tasks, config):
     """Run MoB experiment with local classes."""
 
@@ -868,6 +948,25 @@ def run_experiment(train_tasks, test_tasks, config):
     train_warmup_mode = config.get('train_warmup_mode', 'batches')
     train_routing_warmup = config.get('train_routing_warmup', 1000)
     prototype_routing_active = False
+    routing_blend_enabled = (
+        train_routing == 'prototype' and
+        config.get('routing_blend_enabled', False)
+    )
+    routing_blend_start = config.get('routing_blend_start', 0.0)
+    routing_blend_end = config.get('routing_blend_end', 1.0)
+    total_training_batches = epochs_per_task * sum(len(loader) for loader in train_tasks)
+    if train_warmup_mode == 'task' and len(train_tasks) > 0:
+        warmup_end_batch = epochs_per_task * len(train_tasks[0])
+    else:
+        warmup_end_batch = train_routing_warmup
+    warmup_end_batch = int(min(max(0, warmup_end_batch), max(total_training_batches, 0)))
+
+    if routing_blend_enabled:
+        print(
+            f"\n[Routing Blend] Enabled: start={routing_blend_start:.4f}, "
+            f"end={routing_blend_end:.4f}, warmup_end_batch={warmup_end_batch}, "
+            f"total_training_batches={total_training_batches}"
+        )
 
     for task_id, task_loader in enumerate(train_tasks):
         print(f"\n{'='*70}")
@@ -920,8 +1019,30 @@ def run_experiment(train_tasks, test_tasks, config):
                         print(f"\n>>> Switching to PROTOTYPE training routing at batch {global_batch_idx}")
                     prototype_routing_active = True
 
+                blend_ratio = compute_routing_blend_ratio(
+                    blend_enabled=routing_blend_enabled and current_routing == 'prototype',
+                    blend_start=routing_blend_start,
+                    blend_end=routing_blend_end,
+                    global_batch_idx=global_batch_idx,
+                    warmup_end_batch=warmup_end_batch,
+                    total_batches=total_training_batches
+                )
+                if (
+                    blend_ratio is not None
+                    and (global_batch_idx == warmup_end_batch or global_batch_idx % 200 == 0)
+                ):
+                    batches_since_warmup = max(0, global_batch_idx - warmup_end_batch)
+                    remaining_batches = max(1, total_training_batches - warmup_end_batch)
+                    progress = min(1.0, batches_since_warmup / remaining_batches)
+                    print(
+                        f"[Routing Blend] batch={global_batch_idx} progress={progress:.4f} "
+                        f"blend_ratio={blend_ratio:.4f}"
+                    )
+
                 # Collect bids
-                bids, components = pool.collect_bids(x, y, train_routing=current_routing)
+                bids, components = pool.collect_bids(
+                    x, y, train_routing=current_routing, blend_ratio=blend_ratio
+                )
 
                 # Auction
                 winner_id = pool.select_winner(
@@ -1249,6 +1370,10 @@ def main():
                         help='Warmup switch mode: batches (switch after --train_routing_warmup) or task (switch after first task boundary)')
     parser.add_argument('--train_routing_warmup', type=int, default=1000,
                         help='Batches of label-based warmup before switching to prototype routing (used when --train_warmup_mode=batches)')
+    parser.add_argument('--routing_blend_start', type=float, default=0.0,
+                        help='Training-time blend ratio at prototype routing start (0.0 keeps label routing influence)')
+    parser.add_argument('--routing_blend_end', type=float, default=1.0,
+                        help='Training-time blend ratio target at end of training (1.0 = full prototype routing)')
     parser.add_argument('--use_conscience', action='store_true',
                         help='Enable conscience bias load-balancing in bid computation')
     parser.add_argument('--conscience_rate', type=float, default=0.005,
@@ -1269,6 +1394,15 @@ def main():
                         help='Minimum wins in a task required to update Fisher (default: 100)')
 
     args = parser.parse_args()
+    blend_flags_specified = (
+        '--routing_blend_start' in sys.argv or
+        '--routing_blend_end' in sys.argv
+    )
+    routing_blend_enabled = (
+        blend_flags_specified
+        or abs(args.routing_blend_start - 0.0) > 1e-12
+        or abs(args.routing_blend_end - 1.0) > 1e-12
+    )
 
     set_seed(args.seed)
 
@@ -1300,6 +1434,9 @@ def main():
         'train_routing': args.train_routing,
         'train_warmup_mode': args.train_warmup_mode,
         'train_routing_warmup': args.train_routing_warmup,
+        'routing_blend_start': args.routing_blend_start,
+        'routing_blend_end': args.routing_blend_end,
+        'routing_blend_enabled': routing_blend_enabled,
         'use_conscience': args.use_conscience,
         'conscience_rate': args.conscience_rate,
         'conscience_decay': args.conscience_decay,

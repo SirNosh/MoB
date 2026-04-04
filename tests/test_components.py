@@ -701,6 +701,93 @@ def test_task_warmup_mode_switch_logic_continual():
     assert resolve_stream_train_routing('prototype', 'task', batch_idx=400, train_routing_warmup=9999, first_task_boundary_batch=400) == 'prototype'
 
 
+def test_routing_blend_interpolates_label_and_prototype_bids():
+    """Blended routing should linearly interpolate between label and prototype bids."""
+    from contibualmob.pool import ExpertPool
+
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'seed_idle_prototypes': True,
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+
+    x = torch.randn(8, 1, 28, 28)
+    y = torch.randint(0, 10, (8,))
+    pool.seed_idle_prototypes(x, y)
+
+    label_bids, _ = pool.collect_bids(x, y, train_routing='prototype', blend_ratio=0.0)
+    proto_bids, _ = pool.collect_bids(x, y, train_routing='prototype', blend_ratio=1.0)
+
+    blend = 0.35
+    blended_bids, components = pool.collect_bids(
+        x, y, train_routing='prototype', blend_ratio=blend
+    )
+    expected = (1.0 - blend) * label_bids + blend * proto_bids
+
+    assert np.allclose(blended_bids, expected, atol=1e-6), \
+        "Blended bids must match linear interpolation between label and prototype bids"
+    assert all(comp.get('routing') == 'blend' for comp in components)
+    assert all(abs(comp.get('blend_ratio', -1.0) - blend) < 1e-12 for comp in components)
+
+
+def test_routing_blend_prototype_compat_at_one():
+    """blend_ratio=1.0 should match existing prototype-only routing behavior."""
+    from contibualmob.pool import ExpertPool
+
+    np.random.seed(1)
+    torch.manual_seed(1)
+
+    expert_config = {
+        'architecture': 'simple_cnn',
+        'num_classes': 10,
+        'input_channels': 1,
+        'alpha': 0.5,
+        'beta': 0.5,
+        'lambda_ewc': 1.0,
+        'seed_idle_prototypes': True,
+    }
+    pool = ExpertPool(num_experts=4, expert_config=expert_config)
+
+    x = torch.randn(8, 1, 28, 28)
+    y = torch.randint(0, 10, (8,))
+    pool.seed_idle_prototypes(x, y)
+
+    default_bids, _ = pool.collect_bids(x, y, train_routing='prototype')
+    blend_one_bids, _ = pool.collect_bids(x, y, train_routing='prototype', blend_ratio=1.0)
+    assert np.allclose(default_bids, blend_one_bids, atol=1e-6)
+
+
+def test_routing_blend_ratio_schedule():
+    """Blend ratio should progress linearly from start to end after warmup."""
+    from tests.run_mob_only import compute_routing_blend_ratio
+
+    # Disabled path
+    assert compute_routing_blend_ratio(
+        blend_enabled=False,
+        blend_start=0.0,
+        blend_end=1.0,
+        global_batch_idx=100,
+        warmup_end_batch=100,
+        total_batches=500
+    ) is None
+
+    # Enabled 0.0 -> 1.0
+    assert compute_routing_blend_ratio(True, 0.0, 1.0, 100, 100, 500) == 0.0
+    assert compute_routing_blend_ratio(True, 0.0, 1.0, 300, 100, 500) == 0.5
+    assert compute_routing_blend_ratio(True, 0.0, 1.0, 500, 100, 500) == 1.0
+
+    # Enabled 0.0 -> 0.5
+    assert compute_routing_blend_ratio(True, 0.0, 0.5, 500, 100, 500) == 0.5
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
