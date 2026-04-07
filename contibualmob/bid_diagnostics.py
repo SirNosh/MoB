@@ -1,60 +1,41 @@
 """
 Bid diagnostics and logging for MoB: Mixture of Bidders.
 
-This module provides comprehensive logging and diagnostic tools to identify
-potential issues with the bidding mechanism, including:
-
-- Alpha (PredictedLoss) signal being ignored
-- Beta (ForgettingCost) too high preventing learning
-- Bids exploding or vanishing
-- Detailed component-level tracking
-
-Usage:
-    logger = BidLogger()
-    logger.log_batch(batch_idx, bids, components, winner_id)
-    logger.print_diagnostics()
-    logger.save_logs("bid_logs.json")
+Tracks training and evaluation routing for both pseudo-label and prototype strategies.
 """
 
 import json
+import math
 import numpy as np
-import torch
 from typing import Dict, List, Optional
 from pathlib import Path
 
 
 class BidLogger:
     """
-    Comprehensive logging for bid components and diagnostics.
+    Comprehensive logging for bid components at both training and evaluation time.
 
-    Tracks execution costs, forgetting costs, final bids, and winner IDs
-    across all batches to diagnose potential bidding issues.
+    Training:  log_batch() — exec+forget bids, winner, task
+    Eval:      log_eval_batch() — prototype distances or exec costs, per-digit routing
+    Prototype: log_prototype_finalize() — snapshot of centroid state at consolidation
     """
 
-    def __init__(self, num_experts: int, alpha: float = 0.5, beta: float = 0.5, log_file: Optional[str] = None):
-        """
-        Initialize the bid logger.
-
-        Parameters:
-        -----------
-        num_experts : int
-            Number of experts in the system.
-        alpha : float
-            Weight for execution cost (stored once, not per-batch).
-        beta : float
-            Weight for forgetting cost (stored once, not per-batch).
-        log_file : str, optional
-            Path to save logs automatically after each batch.
-        """
+    def __init__(
+        self,
+        num_experts: int,
+        alpha: float = 0.5,
+        beta: float = 0.5,
+        routing_strategy: str = 'pseudo_label',
+        log_file: Optional[str] = None
+    ):
         self.num_experts = num_experts
         self.alpha = alpha
         self.beta = beta
+        self.routing_strategy = routing_strategy
         self.log_file = log_file
 
-        # Storage for all batch logs (compact format)
+        # --- Training logs ---
         self.batch_logs: List[Dict] = []
-
-        # Aggregate statistics
         self.stats = {
             'num_batches': 0,
             'expert_wins': [0] * num_experts,
@@ -62,6 +43,28 @@ class BidLogger:
             'forget_cost_history': [[] for _ in range(num_experts)],
             'bid_history': [[] for _ in range(num_experts)],
         }
+
+        # --- Evaluation logs (prototype or pseudo-label) ---
+        self.eval_logs: List[Dict] = []
+        self.eval_stats = {
+            'num_eval_batches': 0,
+            'eval_winner_history': [],
+            # per-expert: primary cost signal (distance or exec_cost)
+            'primary_cost_history': [[] for _ in range(num_experts)],
+            'eval_forget_cost_history': [[] for _ in range(num_experts)],
+            'eval_bid_history': [[] for _ in range(num_experts)],
+            # per-digit routing: digit -> {expert_id -> count}
+            'digit_routing': {d: {i: 0 for i in range(num_experts)} for d in range(10)},
+            'digit_correct': {d: 0 for d in range(10)},
+            'digit_total': {d: 0 for d in range(10)},
+        }
+
+        # --- Prototype state snapshots ---
+        self.prototype_state_log: List[Dict] = []
+
+    # =========================================================================
+    # TRAINING LOGGING
+    # =========================================================================
 
     def log_batch(
         self,
@@ -71,23 +74,7 @@ class BidLogger:
         winner_id: int,
         task_id: Optional[int] = None
     ):
-        """
-        Log all bid information for a single batch (compact format).
-
-        Parameters:
-        -----------
-        batch_idx : int
-            Index of the current batch.
-        bids : np.ndarray
-            Array of final bids from all experts.
-        components : list of dict
-            Bid component breakdowns from each expert.
-        winner_id : int
-            ID of the winning expert.
-        task_id : int, optional
-            Current task ID for multi-task tracking.
-        """
-        # Compact format: [exec_cost, forget_cost, bid] per expert
+        """Log training bid components for one batch."""
         experts_data = []
         for expert_id in range(self.num_experts):
             comp = components[expert_id]
@@ -96,380 +83,429 @@ class BidLogger:
                 round(float(comp['forget_cost']), 6),
                 round(float(comp['bid']), 6)
             ])
-            
-            # Update aggregate statistics
             self.stats['exec_cost_history'][expert_id].append(float(comp['exec_cost']))
             self.stats['forget_cost_history'][expert_id].append(float(comp['forget_cost']))
             self.stats['bid_history'][expert_id].append(float(comp['bid']))
 
-        # Compact batch log: [batch_idx, task_id, winner_id, [[e0], [e1], ...]]
-        batch_log = {
-            'b': batch_idx,
-            't': task_id,
-            'w': winner_id,
-            'e': experts_data  # e[i] = [exec, forget, bid]
-        }
-
-        # Update statistics
+        self.batch_logs.append({'b': batch_idx, 't': task_id, 'w': winner_id, 'e': experts_data})
         self.stats['num_batches'] += 1
         self.stats['expert_wins'][winner_id] += 1
 
-        self.batch_logs.append(batch_log)
-
-        # Auto-save if configured
-        if self.log_file and batch_idx % 100 == 0:  # Save every 100 batches
+        if self.log_file and batch_idx % 100 == 0:
             self.save_logs(self.log_file)
 
+    # =========================================================================
+    # EVALUATION LOGGING
+    # =========================================================================
+
+    def log_eval_batch(
+        self,
+        batch_idx: int,
+        per_expert_data: List[Dict],
+        winner_id: int,
+        digit_labels: Optional[List[int]] = None,
+        winner_preds: Optional[List[int]] = None
+    ):
+        """
+        Log evaluation routing decisions.
+
+        per_expert_data: list of dicts per expert, each with:
+            - 'primary_cost': distance_score (prototype) or exec_cost (pseudo-label)
+            - 'forget_cost': raw forget cost
+            - 'norm_primary': normalized primary cost
+            - 'norm_forget': normalized forget cost
+            - 'bid': final bid
+        digit_labels: ground-truth digit labels for this batch (for per-digit routing stats)
+        winner_preds: predictions from winning expert (for per-digit accuracy)
+        """
+        entry = {
+            'b': batch_idx,
+            'w': winner_id,
+            'e': []
+        }
+        for i, d in enumerate(per_expert_data):
+            entry['e'].append({
+                'pc': round(float(d['primary_cost']), 6),
+                'fc': round(float(d['forget_cost']), 6),
+                'np': round(float(d['norm_primary']), 6),
+                'nf': round(float(d['norm_forget']), 6),
+                'bid': round(float(d['bid']), 6)
+            })
+            self.eval_stats['primary_cost_history'][i].append(float(d['primary_cost']))
+            self.eval_stats['eval_forget_cost_history'][i].append(float(d['forget_cost']))
+            self.eval_stats['eval_bid_history'][i].append(float(d['bid']))
+
+        self.eval_stats['eval_winner_history'].append(winner_id)
+        self.eval_stats['num_eval_batches'] += 1
+
+        # Per-digit routing
+        if digit_labels is not None:
+            for i, digit in enumerate(digit_labels):
+                d = int(digit)
+                self.eval_stats['digit_routing'][d][winner_id] += 1
+                self.eval_stats['digit_total'][d] += 1
+                if winner_preds is not None and int(winner_preds[i]) == d:
+                    self.eval_stats['digit_correct'][d] += 1
+
+        self.eval_logs.append(entry)
+
+    def log_prototype_finalize(
+        self,
+        expert_id: int,
+        event: str,
+        batch_idx: int,
+        classes_seen: List[int],
+        sample_counts: Dict[int, int],
+        has_mahalanobis: bool,
+        feature_dim: int
+    ):
+        """
+        Log prototype store state at consolidation.
+
+        event: 'finalize' or 'update'
+        """
+        self.prototype_state_log.append({
+            'expert_id': expert_id,
+            'event': event,
+            'batch_idx': batch_idx,
+            'classes_seen': sorted(classes_seen),
+            'sample_counts': {str(k): v for k, v in sample_counts.items()},
+            'total_samples': sum(sample_counts.values()),
+            'has_mahalanobis': has_mahalanobis,
+            'feature_dim': feature_dim
+        })
+
+    # =========================================================================
+    # DIAGNOSTICS
+    # =========================================================================
+
     def print_diagnostics(self, last_n_batches: Optional[int] = None):
-        """
-        Print comprehensive diagnostics to identify bidding issues.
-
-        Parameters:
-        -----------
-        last_n_batches : int, optional
-            Only analyze the last N batches. If None, analyzes all batches.
-        """
-        if self.stats['num_batches'] == 0:
-            print("⚠  No batches logged yet.")
-            return
-
-        # Determine which batches to analyze
-        if last_n_batches is not None:
-            start_idx = max(0, self.stats['num_batches'] - last_n_batches)
-        else:
-            start_idx = 0
-            last_n_batches = self.stats['num_batches']
-
+        """Print comprehensive diagnostics for training and evaluation."""
         print("\n" + "="*80)
-        print(f"BID DIAGNOSTICS (Last {last_n_batches} batches)")
+        print(f"BID DIAGNOSTICS  [routing_strategy={self.routing_strategy}]")
         print("="*80)
 
-        # Issue 1: Is alpha (PredictedLoss) signal being ignored?
-        print("\n[1] ALPHA SIGNAL CHECK (Execution Cost)")
-        print("-" * 80)
+        self._print_training_diagnostics(last_n_batches)
 
-        for expert_id in range(self.num_experts):
-            exec_costs = self.stats['exec_cost_history'][expert_id][start_idx:]
+        if self.eval_stats['num_eval_batches'] > 0:
+            self._print_eval_diagnostics()
 
-            if len(exec_costs) > 0:
-                mean_exec = np.mean(exec_costs)
-                std_exec = np.std(exec_costs)
-                min_exec = np.min(exec_costs)
-                max_exec = np.max(exec_costs)
+        # Load balancing analysis (Experiment 4)
+        if self.stats['num_batches'] > 0 or self.eval_stats['num_eval_batches'] > 0:
+            self._print_load_balancing_diagnostics()
 
-                print(f"  Expert {expert_id}:")
-                print(f"    Mean: {mean_exec:.6f} ± {std_exec:.6f}")
-                print(f"    Range: [{min_exec:.6f}, {max_exec:.6f}]")
+        if self.prototype_state_log:
+            self._print_prototype_state_diagnostics()
 
-                # Check if exec cost is near zero (alpha signal ignored)
-                if mean_exec < 1e-6:
-                    print(f"    ⚠  WARNING: Execution cost near zero! Alpha signal may be ignored.")
-                elif std_exec < 1e-8:
-                    print(f"    ⚠  WARNING: No variance in execution cost! All batches look the same.")
+    def _print_training_diagnostics(self, last_n_batches):
+        if self.stats['num_batches'] == 0:
+            print("[WARN] No training batches logged.")
+            return
 
-        # Issue 2: Is beta (ForgettingCost) too high preventing learning?
-        print("\n[2] BETA SIGNAL CHECK (Forgetting Cost)")
-        print("-" * 80)
+        start_idx = 0 if last_n_batches is None else max(0, self.stats['num_batches'] - last_n_batches)
+        n = self.stats['num_batches'] - start_idx
 
-        for expert_id in range(self.num_experts):
-            forget_costs = self.stats['forget_cost_history'][expert_id][start_idx:]
-            exec_costs = self.stats['exec_cost_history'][expert_id][start_idx:]
+        print(f"\n[TRAINING] {n} batches")
+        print("-"*80)
 
-            if len(forget_costs) > 0 and len(exec_costs) > 0:
-                mean_forget = np.mean(forget_costs)
-                std_forget = np.std(forget_costs)
-                min_forget = np.min(forget_costs)
-                max_forget = np.max(forget_costs)
-
-                mean_exec = np.mean(exec_costs)
-                ratio = mean_forget / mean_exec if mean_exec > 0 else float('inf')
-
-                print(f"  Expert {expert_id}:")
-                print(f"    Mean: {mean_forget:.6f} ± {std_forget:.6f}")
-                print(f"    Range: [{min_forget:.6f}, {max_forget:.6f}]")
-                print(f"    Forget/Exec Ratio: {ratio:.2f}x")
-
-                # Check if forgetting cost dominates
-                if ratio > 100:
-                    print(f"    🔴 CRITICAL: Forgetting cost is {ratio:.0f}x execution cost!")
-                    print(f"       This prevents experts from learning new tasks.")
-                    print(f"       Consider: reducing β, reducing λ_EWC, or increasing α")
-                elif ratio > 10:
-                    print(f"    ⚠  WARNING: Forgetting cost is {ratio:.0f}x execution cost.")
-                    print(f"       Learning may be significantly hindered.")
-                elif ratio < 0.01:
-                    print(f"    ⚠  WARNING: Forgetting cost is negligible ({ratio:.4f}x).")
-                    print(f"       EWC may not be preventing forgetting effectively.")
-
-        # Issue 3: Are bids exploding or vanishing?
-        print("\n[3] BID MAGNITUDE CHECK")
-        print("-" * 80)
-
-        for expert_id in range(self.num_experts):
-            bids = self.stats['bid_history'][expert_id][start_idx:]
-
-            if len(bids) > 0:
-                mean_bid = np.mean(bids)
-                std_bid = np.std(bids)
-                min_bid = np.min(bids)
-                max_bid = np.max(bids)
-
-                print(f"  Expert {expert_id}:")
-                print(f"    Mean: {mean_bid:.6f} ± {std_bid:.6f}")
-                print(f"    Range: [{min_bid:.6f}, {max_bid:.6f}]")
-
-                # Check for exploding bids
-                if max_bid > 1e6:
-                    print(f"    🔴 CRITICAL: Bids are exploding! Max bid = {max_bid:.2e}")
-                    print(f"       This indicates numerical instability.")
-                elif max_bid > 1e3:
-                    print(f"    ⚠  WARNING: Bids are very large (max = {max_bid:.2f})")
-
-                # Check for vanishing bids
-                if mean_bid < 1e-6:
-                    print(f"    ⚠  WARNING: Bids are vanishing! Mean bid = {mean_bid:.2e}")
-                    print(f"       Check if both α and β are too small.")
-
-                # Check for NaN or inf
-                if np.any(np.isnan(bids)) or np.any(np.isinf(bids)):
-                    print(f"    🔴 CRITICAL: Bids contain NaN or Inf values!")
-
-        # Issue 4: Expert specialization
-        print("\n[4] EXPERT WIN DISTRIBUTION")
-        print("-" * 80)
-
+        print(f"\n  {'Expert':<10} {'ExecCost(mean)':>16} {'ForgetCost(mean)':>18} {'Bid(mean)':>12} {'Wins':>8} {'WinRate':>9}")
+        print("  " + "-"*75)
         total_wins = sum(self.stats['expert_wins'])
-        for expert_id in range(self.num_experts):
-            wins = self.stats['expert_wins'][expert_id]
-            win_rate = wins / total_wins if total_wins > 0 else 0
+        for i in range(self.num_experts):
+            ec = self.stats['exec_cost_history'][i][start_idx:]
+            fc = self.stats['forget_cost_history'][i][start_idx:]
+            bids = self.stats['bid_history'][i][start_idx:]
+            wins = self.stats['expert_wins'][i]
+            wr = wins / total_wins if total_wins > 0 else 0
+            print(f"  Expert {i:<4} {np.mean(ec):>16.4f} {np.mean(fc):>18.4f} {np.mean(bids):>12.4f} {wins:>8} {wr*100:>8.1f}%")
 
-            bar_length = int(win_rate * 40)
-            bar = "█" * bar_length + "░" * (40 - bar_length)
+        # Warn if exec_cost is near-zero (confidently wrong problem)
+        print()
+        for i in range(self.num_experts):
+            ec = self.stats['exec_cost_history'][i][start_idx:]
+            if len(ec) > 0 and np.mean(ec) < 0.05:
+                print(f"  [WARN] Expert {i}: mean exec_cost={np.mean(ec):.5f} — near-zero, "
+                      f"'confidently wrong' problem likely")
 
-            print(f"  Expert {expert_id}: {bar} {win_rate*100:5.1f}% ({wins}/{total_wins})")
+        print(f"\n  Win distribution:")
+        for i in range(self.num_experts):
+            w = self.stats['expert_wins'][i]
+            r = w / total_wins if total_wins > 0 else 0
+            bar = "#" * int(r * 40) + "-" * (40 - int(r * 40))
+            print(f"  Expert {i}: [{bar}] {r*100:5.1f}%")
 
-        # Check for monopoly
-        max_wins = max(self.stats['expert_wins'])
-        max_win_rate = max_wins / total_wins if total_wins > 0 else 0
+    def _print_eval_diagnostics(self):
+        n = self.eval_stats['num_eval_batches']
+        strategy = self.routing_strategy
+        primary_label = "Distance" if strategy == 'prototype' else "ExecCost"
 
-        if max_win_rate > 0.8:
-            print(f"\n  ⚠  WARNING: One expert dominates ({max_win_rate*100:.1f}% of batches)")
-            print(f"     This may indicate poor auction dynamics.")
+        print(f"\n[EVALUATION] {n} batches  (strategy={strategy})")
+        print("-"*80)
 
-        # Check for equal distribution (no specialization)
-        expected_rate = 1.0 / self.num_experts
-        actual_rates = [w / total_wins if total_wins > 0 else 0 for w in self.stats['expert_wins']]
-        variance = np.var(actual_rates)
+        # Per-expert eval bid breakdown
+        print(f"\n  {'Expert':<10} {primary_label+' (mean)':>18} {'ForgetCost(mean)':>18} {'Bid(mean)':>12} {'EvalWins':>10}")
+        print("  " + "-"*65)
 
-        if variance < 0.001:
-            print(f"\n  ⚠  WARNING: Nearly uniform win distribution (variance={variance:.6f})")
-            print(f"     Experts may not be specializing effectively.")
+        eval_winners = self.eval_stats['eval_winner_history']
+        total_eval = len(eval_winners)
+        eval_win_counts = {i: eval_winners.count(i) for i in range(self.num_experts)}
 
-        print("\n" + "="*80)
+        for i in range(self.num_experts):
+            pc = self.eval_stats['primary_cost_history'][i]
+            fc = self.eval_stats['eval_forget_cost_history'][i]
+            bids = self.eval_stats['eval_bid_history'][i]
+            wins = eval_win_counts.get(i, 0)
+            print(f"  Expert {i:<4} {np.mean(pc):>18.4f} {np.mean(fc):>18.4f} {np.mean(bids):>12.4f} {wins:>8} ({wins/total_eval*100:.1f}%)")
 
-    def get_batch_details(self, batch_idx: int) -> Optional[Dict]:
+        # Prototype-specific: distance separation analysis
+        if strategy == 'prototype' and len(self.eval_stats['primary_cost_history'][0]) > 0:
+            print(f"\n  [PROTOTYPE DISTANCE SEPARATION]")
+            print(f"  Ideal: winner should have LOWER distance than losers.")
+            all_winner_distances = []
+            all_loser_distances = []
+            for log in self.eval_logs:
+                w = log['w']
+                for i, e in enumerate(log['e']):
+                    if i == w:
+                        all_winner_distances.append(e['pc'])
+                    else:
+                        all_loser_distances.append(e['pc'])
+            if all_winner_distances and all_loser_distances:
+                wm = np.mean(all_winner_distances)
+                lm = np.mean(all_loser_distances)
+                separation = (lm - wm) / (lm + 1e-8) * 100
+                print(f"  Mean winner distance:  {wm:.4f}")
+                print(f"  Mean loser distance:   {lm:.4f}")
+                print(f"  Separation (loser-winner)/loser: {separation:.1f}%")
+                if separation < 10:
+                    print(f"  [WARN] Low separation — prototype routing may be near-random")
+                elif separation > 30:
+                    print(f"  [OK] Good separation — prototype routing is discriminative")
+
+        # Per-digit routing
+        print(f"\n  [PER-DIGIT ROUTING]")
+        print(f"  {'Digit':<8} {'Total':>8} {'Accuracy':>10}  Routing distribution")
+        print("  " + "-"*65)
+        for d in range(10):
+            total = self.eval_stats['digit_total'][d]
+            correct = self.eval_stats['digit_correct'][d]
+            if total == 0:
+                continue
+            acc = correct / total * 100
+            routing = self.eval_stats['digit_routing'][d]
+            # Primary expert for this digit
+            primary = max(routing, key=routing.get)
+            routing_str = " ".join([f"E{i}:{routing[i]}" for i in range(self.num_experts) if routing[i] > 0])
+            acc_flag = "" if acc >= 80 else " [WARN low]"
+            print(f"  Digit {d:<4} {total:>8} {acc:>9.1f}%  [{routing_str}] -> primary=E{primary}{acc_flag}")
+
+        # Check for routing collapse (all samples go to one expert)
+        dominant = max(eval_win_counts.values()) / total_eval if total_eval > 0 else 0
+        if dominant > 0.9:
+            print(f"\n  [WARN] Eval routing collapse: one expert gets {dominant*100:.0f}% of batches")
+        # Check for uniform routing (no specialization at eval)
+        eval_rates = [eval_win_counts.get(i, 0) / total_eval for i in range(self.num_experts)]
+        if np.var(eval_rates) < 0.002 and self.num_experts > 1:
+            print(f"\n  [WARN] Eval routing near-uniform — routing not discriminating between experts")
+
+    # =========================================================================
+    # LOAD BALANCING METRICS (Experiment 4)
+    # =========================================================================
+
+    def compute_utilization_metrics(self, win_counts: Dict[int, int]) -> Dict:
         """
-        Get detailed information for a specific batch.
+        Compute load-balancing metrics from expert win counts.
 
-        Parameters:
-        -----------
-        batch_idx : int
-            Index of the batch to retrieve.
+        Args:
+            win_counts: {expert_id: win_count}
 
         Returns:
-        --------
-        batch_log : dict or None
-            Detailed log for the specified batch, or None if not found.
+            Dict with 'entropy', 'max_entropy', 'normalized_entropy', 'gini'.
         """
-        for log in self.batch_logs:
-            if log['batch_idx'] == batch_idx:
-                return log
-        return None
+        total = sum(win_counts.values())
+        if total == 0:
+            return {'entropy': 0.0, 'max_entropy': 0.0, 'normalized_entropy': 0.0, 'gini': 0.0}
 
-    def print_batch_details(self, batch_idx: int):
-        """
-        Print detailed breakdown for a specific batch.
+        n = self.num_experts
+        probs = np.array([win_counts.get(i, 0) / total for i in range(n)])
 
-        Parameters:
-        -----------
-        batch_idx : int
-            Index of the batch to analyze.
-        """
-        log = self.get_batch_details(batch_idx)
+        # Shannon entropy: H = -Σ p_i log(p_i)
+        entropy = 0.0
+        for p in probs:
+            if p > 0:
+                entropy -= p * math.log(p)
+        max_entropy = math.log(n) if n > 1 else 0.0
+        normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
 
-        if log is None:
-            print(f"⚠  Batch {batch_idx} not found in logs.")
-            return
+        # Gini coefficient
+        sorted_probs = np.sort(probs)
+        cumulative = np.cumsum(sorted_probs)
+        gini = 1.0 - 2.0 * np.sum(cumulative) / (n * np.sum(sorted_probs)) if np.sum(sorted_probs) > 0 else 0.0
 
-        print(f"\n" + "="*80)
-        print(f"BATCH {batch_idx} DETAILED BREAKDOWN")
-        if log['task_id'] is not None:
-            print(f"Task ID: {log['task_id']}")
-        print("="*80)
+        return {
+            'entropy': round(entropy, 4),
+            'max_entropy': round(max_entropy, 4),
+            'normalized_entropy': round(normalized_entropy, 4),
+            'gini': round(gini, 4)
+        }
 
-        print(f"\n{'Expert':>10} {'Exec Cost':>12} {'Forget Cost':>12} {'α':>6} {'β':>6} {'Bid':>12} {'Winner':>8}")
-        print("-" * 80)
+    def _print_load_balancing_diagnostics(self):
+        """Print load balancing analysis for training and eval."""
+        print(f"\n[LOAD BALANCING ANALYSIS]")
+        print("-"*80)
 
-        for expert_data in log['experts']:
-            winner_mark = "✓" if expert_data['is_winner'] else ""
+        # Training balance
+        total_train = sum(self.stats['expert_wins'])
+        if total_train > 0:
+            train_counts = {i: self.stats['expert_wins'][i] for i in range(self.num_experts)}
+            train_metrics = self.compute_utilization_metrics(train_counts)
+            print(f"\n  Training ({total_train} batches):")
+            print(f"    Entropy:     {train_metrics['entropy']:.4f} / {train_metrics['max_entropy']:.4f} "
+                  f"(normalized: {train_metrics['normalized_entropy']:.4f})")
+            print(f"    Gini coeff:  {train_metrics['gini']:.4f}")
+            if train_metrics['normalized_entropy'] > 0.7:
+                print(f"    [OK] Good load balance (normalized entropy > 0.7)")
+            elif train_metrics['normalized_entropy'] < 0.4:
+                print(f"    [WARN] Poor load balance (normalized entropy < 0.4)")
 
-            print(f"{expert_data['expert_id']:>10} "
-                  f"{expert_data['exec_cost']:>12.6f} "
-                  f"{expert_data['forget_cost']:>12.6f} "
-                  f"{expert_data['alpha']:>6.2f} "
-                  f"{expert_data['beta']:>6.2f} "
-                  f"{expert_data['bid']:>12.6f} "
-                  f"{winner_mark:>8}")
+        # Eval balance
+        eval_winners = self.eval_stats['eval_winner_history']
+        if eval_winners:
+            eval_counts = {i: eval_winners.count(i) for i in range(self.num_experts)}
+            eval_metrics = self.compute_utilization_metrics(eval_counts)
+            print(f"\n  Evaluation ({len(eval_winners)} batches):")
+            print(f"    Entropy:     {eval_metrics['entropy']:.4f} / {eval_metrics['max_entropy']:.4f} "
+                  f"(normalized: {eval_metrics['normalized_entropy']:.4f})")
+            print(f"    Gini coeff:  {eval_metrics['gini']:.4f}")
 
-        print("="*80 + "\n")
+        # Forgetting cost as implicit load balancer
+        if self.stats['num_batches'] > 0:
+            print(f"\n  [FORGETTING COST AS LOAD BALANCER]")
+            print(f"  Hypothesis: Experts with more knowledge bid higher, pushing new work elsewhere.")
+            for i in range(self.num_experts):
+                fc = self.stats['forget_cost_history'][i]
+                if len(fc) > 0:
+                    wins = self.stats['expert_wins'][i]
+                    wr = wins / total_train * 100 if total_train > 0 else 0
+                    print(f"    Expert {i}: mean_forget_cost={np.mean(fc):.4f}, "
+                          f"final_forget_cost={fc[-1]:.4f}, win_rate={wr:.1f}%")
+
+    def _print_prototype_state_diagnostics(self):
+        print(f"\n[PROTOTYPE STATE SNAPSHOTS] {len(self.prototype_state_log)} events")
+        print("-"*80)
+        for snap in self.prototype_state_log:
+            eid = snap['expert_id']
+            classes = snap['classes_seen']
+            counts = snap['sample_counts']
+            total = snap['total_samples']
+            mah = "Mahalanobis" if snap['has_mahalanobis'] else "Euclidean (fallback)"
+            counts_str = ", ".join([f"cls{c}:{counts.get(str(c), 0)}" for c in classes])
+            print(f"  Expert {eid} @ batch {snap['batch_idx']} [{snap['event']}]: "
+                  f"classes={classes}, total={total}, dist={mah}")
+            print(f"    Counts: {counts_str}")
+
+        print()
+
+    # =========================================================================
+    # SAVE / LOAD
+    # =========================================================================
 
     def save_logs(self, filepath: str):
-        """
-        Save logs to a compact, LLM-friendly JSON file.
-
-        Parameters:
-        -----------
-        filepath : str
-            Path to save the log file.
-        """
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        # Compute summary statistics for quick parsing
-        summary = {
-            'per_expert': {}
-        }
+        # Summary stats
+        per_expert_train = {}
         for i in range(self.num_experts):
-            exec_costs = self.stats['exec_cost_history'][i]
-            forget_costs = self.stats['forget_cost_history'][i]
+            ec = self.stats['exec_cost_history'][i]
+            fc = self.stats['forget_cost_history'][i]
             bids = self.stats['bid_history'][i]
-            
-            if len(exec_costs) > 0:
-                summary['per_expert'][f'expert_{i}'] = {
+            if ec:
+                per_expert_train[f'expert_{i}'] = {
                     'wins': self.stats['expert_wins'][i],
-                    'win_rate': round(self.stats['expert_wins'][i] / self.stats['num_batches'], 4),
-                    'exec_cost': {'mean': round(np.mean(exec_costs), 6), 'std': round(np.std(exec_costs), 6)},
-                    'forget_cost': {'mean': round(np.mean(forget_costs), 6), 'std': round(np.std(forget_costs), 6)},
+                    'win_rate': round(self.stats['expert_wins'][i] / max(self.stats['num_batches'], 1), 4),
+                    'exec_cost': {'mean': round(np.mean(ec), 6), 'std': round(np.std(ec), 6)},
+                    'forget_cost': {'mean': round(np.mean(fc), 6), 'std': round(np.std(fc), 6)},
                     'bid': {'mean': round(np.mean(bids), 6), 'std': round(np.std(bids), 6)}
                 }
 
-        # Compact LLM-friendly format
+        per_expert_eval = {}
+        if self.eval_stats['num_eval_batches'] > 0:
+            eval_winners = self.eval_stats['eval_winner_history']
+            total_eval = len(eval_winners)
+            primary_label = 'distance_score' if self.routing_strategy == 'prototype' else 'exec_cost'
+            for i in range(self.num_experts):
+                pc = self.eval_stats['primary_cost_history'][i]
+                fc = self.eval_stats['eval_forget_cost_history'][i]
+                bids = self.eval_stats['eval_bid_history'][i]
+                wins = eval_winners.count(i)
+                if pc:
+                    per_expert_eval[f'expert_{i}'] = {
+                        'eval_wins': wins,
+                        'eval_win_rate': round(wins / total_eval, 4),
+                        primary_label: {'mean': round(np.mean(pc), 6), 'std': round(np.std(pc), 6)},
+                        'forget_cost': {'mean': round(np.mean(fc), 6), 'std': round(np.std(fc), 6)},
+                        'bid': {'mean': round(np.mean(bids), 6), 'std': round(np.std(bids), 6)}
+                    }
+
+        # Load balancing metrics
+        train_balance = {}
+        total_train = sum(self.stats['expert_wins'])
+        if total_train > 0:
+            train_counts = {i: self.stats['expert_wins'][i] for i in range(self.num_experts)}
+            train_balance = self.compute_utilization_metrics(train_counts)
+
+        eval_balance = {}
+        if self.eval_stats['num_eval_batches'] > 0:
+            eval_winners = self.eval_stats['eval_winner_history']
+            eval_counts = {i: eval_winners.count(i) for i in range(self.num_experts)}
+            eval_balance = self.compute_utilization_metrics(eval_counts)
+
         data = {
             '_format': {
                 'description': 'MoB bid diagnostics log',
-                'batch_format': 'b=batch_idx, t=task_id, w=winner_id, e=experts_data',
-                'expert_format': '[exec_cost, forget_cost, final_bid] per expert (index = expert_id)'
+                'routing_strategy': self.routing_strategy,
+                'train_batch_format': 'b=batch_idx, t=task_id, w=winner_id, e=[[exec,forget,bid], ...]',
+                'eval_batch_format': 'b=batch_idx, w=winner_id, e=[{pc,fc,np,nf,bid}, ...]',
+                'pc_meaning': 'distance_score (prototype) or exec_cost (pseudo-label)',
             },
             'config': {
                 'num_experts': self.num_experts,
                 'alpha': self.alpha,
                 'beta': self.beta,
-                'bid_formula': 'bid = alpha * exec_cost + beta * forget_cost'
+                'routing_strategy': self.routing_strategy,
             },
-            'summary': {
+            'training_summary': {
                 'total_batches': self.stats['num_batches'],
                 'expert_wins': self.stats['expert_wins'],
-                **summary
+                'per_expert': per_expert_train,
+                'load_balance': train_balance
             },
-            'batches': self.batch_logs
+            'eval_summary': {
+                'total_eval_batches': self.eval_stats['num_eval_batches'],
+                'per_expert': per_expert_eval,
+                'load_balance': eval_balance,
+                'per_digit_routing': {
+                    str(d): {
+                        'total': self.eval_stats['digit_total'][d],
+                        'correct': self.eval_stats['digit_correct'][d],
+                        'accuracy': round(
+                            self.eval_stats['digit_correct'][d] / self.eval_stats['digit_total'][d], 4
+                        ) if self.eval_stats['digit_total'][d] > 0 else 0.0,
+                        'routing': {str(k): v for k, v in self.eval_stats['digit_routing'][d].items()}
+                    }
+                    for d in range(10) if self.eval_stats['digit_total'][d] > 0
+                }
+            },
+            'prototype_state_log': self.prototype_state_log,
+            'training_batches': self.batch_logs,
+            'eval_batches': self.eval_logs
         }
 
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)
 
-        print(f"✓ Bid logs saved to: {filepath}")
-
-    def load_logs(self, filepath: str):
-        """
-        Load logs from a JSON file.
-
-        Parameters:
-        -----------
-        filepath : str
-            Path to the log file.
-        """
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-
-        self.num_experts = data['num_experts']
-        self.batch_logs = data['batch_logs']
-
-        # Reconstruct statistics
-        self.stats['num_batches'] = data['num_batches']
-        self.stats['expert_wins'] = data['expert_wins']
-
-        # Rebuild history arrays
-        self.stats['exec_cost_history'] = [[] for _ in range(self.num_experts)]
-        self.stats['forget_cost_history'] = [[] for _ in range(self.num_experts)]
-        self.stats['bid_history'] = [[] for _ in range(self.num_experts)]
-
-        for batch_log in self.batch_logs:
-            for expert_data in batch_log['experts']:
-                expert_id = expert_data['expert_id']
-                self.stats['exec_cost_history'][expert_id].append(expert_data['exec_cost'])
-                self.stats['forget_cost_history'][expert_id].append(expert_data['forget_cost'])
-                self.stats['bid_history'][expert_id].append(expert_data['bid'])
-
-        print(f"✓ Bid logs loaded from: {filepath}")
-
-    def plot_bid_components(self, save_path: Optional[str] = None):
-        """
-        Create visualization of bid components over time.
-
-        Parameters:
-        -----------
-        save_path : str, optional
-            Path to save the plot (PNG or HTML).
-        """
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            print("⚠  Matplotlib not available. Install with: pip install matplotlib")
-            return
-
-        fig, axes = plt.subplots(3, 1, figsize=(12, 10))
-
-        # Plot execution costs
-        for expert_id in range(self.num_experts):
-            axes[0].plot(
-                self.stats['exec_cost_history'][expert_id],
-                label=f'Expert {expert_id}',
-                alpha=0.7
-            )
-        axes[0].set_ylabel('Execution Cost')
-        axes[0].set_title('Execution Cost (α signal) Over Time')
-        axes[0].legend()
-        axes[0].grid(True, alpha=0.3)
-
-        # Plot forgetting costs
-        for expert_id in range(self.num_experts):
-            axes[1].plot(
-                self.stats['forget_cost_history'][expert_id],
-                label=f'Expert {expert_id}',
-                alpha=0.7
-            )
-        axes[1].set_ylabel('Forgetting Cost')
-        axes[1].set_title('Forgetting Cost (β signal) Over Time')
-        axes[1].legend()
-        axes[1].grid(True, alpha=0.3)
-
-        # Plot final bids
-        for expert_id in range(self.num_experts):
-            axes[2].plot(
-                self.stats['bid_history'][expert_id],
-                label=f'Expert {expert_id}',
-                alpha=0.7
-            )
-        axes[2].set_xlabel('Batch')
-        axes[2].set_ylabel('Final Bid')
-        axes[2].set_title('Final Bids Over Time')
-        axes[2].legend()
-        axes[2].grid(True, alpha=0.3)
-
-        plt.tight_layout()
-
-        if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            print(f"✓ Bid component plot saved to: {save_path}")
-        else:
-            plt.show()
+        print(f"[OK] Bid logs saved to: {filepath}")
+        print(f"     Training: {self.stats['num_batches']} batches | "
+              f"Eval: {self.eval_stats['num_eval_batches']} batches | "
+              f"Prototype snapshots: {len(self.prototype_state_log)}")

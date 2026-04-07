@@ -1,8 +1,8 @@
 """
 Auction mechanisms for MoB: Mixture of Bidders.
 
-This module implements the VCG (Vickrey-Clarke-Groves) auction mechanism
-for truthful expert selection, along with an optional sealed-bid protocol.
+This module implements the auction mechanism for expert selection,
+along with an optional sealed-bid protocol.
 """
 
 import time
@@ -11,12 +11,12 @@ import numpy as np
 from typing import Tuple, Dict, Optional
 
 
-class PerBatchVCGAuction:
+class PerBatchAuction:
     """
-    Per-batch VCG mechanism for MoB: Mixture of Bidders.
+    Per-batch auction mechanism for MoB: Mixture of Bidders.
 
     This is a single-item auction where the optimal allocation is simply the
-    minimum bid, which preserves the VCG truthfulness guarantees.
+    minimum bid, which preserves truthfulness guarantees.
 
     The mechanism implements a second-price sealed-bid auction (Vickrey auction)
     which is Dominant-Strategy Incentive-Compatible (DSIC).
@@ -24,7 +24,7 @@ class PerBatchVCGAuction:
 
     def __init__(self, num_experts: int):
         """
-        Initialize the VCG auction mechanism.
+        Initialize the auction mechanism.
 
         Parameters:
         -----------
@@ -36,7 +36,7 @@ class PerBatchVCGAuction:
 
     def run_auction(self, bids: np.ndarray) -> Tuple[int, float, Dict]:
         """
-        Execute a truthful VCG auction for a single data batch.
+        Execute a truthful auction for a single data batch.
 
         The auction selects the expert with the lowest bid (best cost) and
         charges them the second-lowest bid price.
@@ -51,7 +51,7 @@ class PerBatchVCGAuction:
         winner : int
             The ID of the expert that wins the auction.
         payment : float
-            The VCG payment, determined by the second-price rule.
+            The payment, determined by the second-price rule.
         metrics : dict
             Additional statistics from the auction.
         """
@@ -62,7 +62,7 @@ class PerBatchVCGAuction:
         winner = int(np.argmin(bids))
         winning_bid = float(bids[winner])
 
-        # 2. Payment: Compute the VCG payment (the second-lowest bid).
+        # 2. Payment: second-price rule (the second-lowest bid).
         if self.num_experts > 1:
             second_lowest_bid = float(np.partition(bids, 1)[1])
             payment = second_lowest_bid

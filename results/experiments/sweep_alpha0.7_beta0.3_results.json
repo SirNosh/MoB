@@ -1,0 +1,52 @@
+{
+  "seed": 42,
+  "experiment_name": "sweep_alpha0.7_beta0.3",
+  "config": {
+    "num_experts": 4,
+    "num_tasks": 5,
+    "alpha": 0.7,
+    "beta": 0.3,
+    "lambda_ewc": 5.0,
+    "learning_rate": 0.001,
+    "forgetting_cost_scale": 1.0,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4,
+    "use_lwf": false,
+    "lwf_temperature": 2.0,
+    "lwf_alpha": 0.1,
+    "bid_formula": "addition",
+    "reset_optimizer": true,
+    "idle_threshold": 100,
+    "routing_strategy": "prototype",
+    "top_k": 1,
+    "per_sample": true,
+    "temperature": 1.0,
+    "eval_bid_mode": "full",
+    "train_routing": "label",
+    "train_routing_warmup": 1000
+  },
+  "task_accuracies": [
+    0.9990543735224586,
+    0.9897159647404505,
+    0.9994663820704376,
+    0.998992950654582,
+    0.9757942511346445
+  ],
+  "final_accuracies": [
+    0.993380606174469,
+    0.0,
+    0.9861259460449219,
+    0.978348433971405,
+    0.0
+  ],
+  "avg_accuracy": 0.5915709972381592,
+  "forgetting": 0.25734367119928325,
+  "expert_task_wins": {
+    "0": 2,
+    "1": 3,
+    "2": 0,
+    "3": 1,
+    "4": 3
+  }
+}

@@ -2,7 +2,7 @@
 Test script for MoB Phase 1 on Split-MNIST.
 
 This script validates the core components of the MoB system:
-- VCG auction mechanism
+- Auction mechanism
 - Expert bidding and training
 - EWC forgetting prevention
 - Expert specialization on Split-MNIST
@@ -23,7 +23,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from mob import (
-    PerBatchVCGAuction,
+    PerBatchAuction,
     ExpertPool,
     SimpleCNN
 )
@@ -254,7 +254,7 @@ def run_mob_experiment(
     }
 
     pool = ExpertPool(num_experts, expert_config, device=device)
-    auction = PerBatchVCGAuction(num_experts)
+    auction = PerBatchAuction(num_experts)
 
     # Create optimizers
     optimizers = [

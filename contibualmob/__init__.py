@@ -1,18 +1,19 @@
 """
-MoB: Mixture of Bidders - A Continual Learning Framework with VCG Auctions
+MoB: Mixture of Bidders - A Continual Learning Framework with Auction-Based Routing
 
 This package implements a novel continual learning system where expert neural networks
 compete in truthful auctions to process data batches, enabling emergent specialization
 and mitigating catastrophic forgetting.
 """
 
-from .auction import PerBatchVCGAuction, SealedBidProtocol, create_commitment
+from .auction import PerBatchAuction, SealedBidProtocol, create_commitment
 from .bidding import ExecutionCostEstimator, EWCForgettingEstimator
 from .expert import MoBExpert
 from .pool import ExpertPool
 from .models import SimpleCNN, LeNet5, MLP, create_model
 from .baselines import NaiveFineTuning, RandomAssignment, MonolithicEWC, GatedMoE
 from .bid_diagnostics import BidLogger
+from .prototype_store import PrototypeStore
 from .utils import (
     set_seed,
     setup_logging,
@@ -31,7 +32,7 @@ __author__ = "MoB Development Team"
 
 __all__ = [
     # Auction mechanisms
-    'PerBatchVCGAuction',
+    'PerBatchAuction',
     'SealedBidProtocol',
     'create_commitment',
 
@@ -43,6 +44,7 @@ __all__ = [
     # Expert management
     'MoBExpert',
     'ExpertPool',
+    'PrototypeStore',
 
     # Models
     'SimpleCNN',

@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from mob.models import create_model
-from mob.auction import PerBatchVCGAuction
+from mob.auction import PerBatchAuction
 from mob.bidding import ExecutionCostEstimator, EWCForgettingEstimator
 from mob.bid_diagnostics import BidLogger
 from mob.utils import set_seed
@@ -403,7 +403,7 @@ class ExpertPoolLocal:
                 # This avoids the "confidently wrong" problem with pseudo-label exec_cost
                 batch_bids[i] = forget_cost
 
-            # Route to expert with LOWEST bid (same as VCG auction)
+            # Route to expert with LOWEST bid (same as auction)
             winner_id = np.argmin(batch_bids)
             expert_selections[winner_id] += 1
             winning_preds = batch_logits[winner_id].argmax(dim=-1).cpu()
@@ -471,7 +471,7 @@ def run_experiment(train_tasks, test_tasks, config):
 
     # Create LOCAL pool (not the original ExpertPool)
     pool = ExpertPoolLocal(config['num_experts'], expert_config, device=device)
-    auction = PerBatchVCGAuction(config['num_experts'])
+    auction = PerBatchAuction(config['num_experts'])
 
     optimizers = [
         torch.optim.Adam(expert.model.parameters(), lr=config['learning_rate'])

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 
 # IMPORT FROM contibualmob (The new environment)
 from contibualmob.pool import ExpertPool
-from contibualmob.auction import PerBatchVCGAuction
+from contibualmob.auction import PerBatchAuction
 from contibualmob.bid_diagnostics import BidLogger
 from contibualmob.utils import set_seed
 
@@ -78,7 +78,7 @@ def run_continual_experiment(train_tasks, test_tasks, config):
     if pool.shift_detector:
         pool.shift_detector.threshold_multiplier = config['shift_threshold']
 
-    auction = PerBatchVCGAuction(config['num_experts'])
+    auction = PerBatchAuction(config['num_experts'])
 
     optimizers = [
         torch.optim.Adam(expert.model.parameters(), lr=config['learning_rate'])

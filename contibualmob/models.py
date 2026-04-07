@@ -8,7 +8,7 @@ in the MoB framework.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class SimpleCNN(nn.Module):
@@ -116,6 +116,31 @@ class SimpleCNN(nn.Module):
 
         return x
 
+    def forward_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass returning both penultimate features and logits.
+
+        Returns:
+        --------
+        features : torch.Tensor
+            Penultimate-layer activation of shape (batch_size, 128 * width_multiplier).
+        logits : torch.Tensor
+            Output logits of shape (batch_size, num_classes).
+        """
+        if not self._initialized:
+            self._initialize_fc_layers(x.shape)
+
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = self.dropout1(x)
+        x = x.view(x.size(0), -1)
+
+        features = F.relu(self.fc1(x))
+        x = self.dropout2(features)
+        logits = self.fc2(x)
+
+        return features, logits
+
 
 class LeNet5(nn.Module):
     """
@@ -168,6 +193,25 @@ class LeNet5(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+
+    def forward_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass returning both penultimate features and logits.
+
+        Returns:
+        --------
+        features : torch.Tensor
+            Penultimate-layer activation of shape (batch_size, 84 * width_multiplier).
+        logits : torch.Tensor
+            Output logits of shape (batch_size, num_classes).
+        """
+        x = F.max_pool2d(F.relu(self.conv1(x)), 2)
+        x = F.max_pool2d(F.relu(self.conv2(x)), 2)
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        features = F.relu(self.fc2(x))
+        logits = self.fc3(features)
+        return features, logits
 
 
 class MLP(nn.Module):
@@ -236,6 +280,25 @@ class MLP(nn.Module):
         """
         x = x.view(x.size(0), -1)  # Flatten
         return self.network(x)
+
+    def forward_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass returning both penultimate features and logits.
+
+        Returns:
+        --------
+        features : torch.Tensor
+            Penultimate-layer activation (output of second-to-last linear layer).
+        logits : torch.Tensor
+            Output logits of shape (batch_size, num_classes).
+        """
+        x = x.view(x.size(0), -1)  # Flatten
+        # Run all layers except the last (final Linear)
+        for layer in list(self.network)[:-1]:
+            x = layer(x)
+        features = x
+        logits = self.network[-1](features)
+        return features, logits
 
 
 def create_model(

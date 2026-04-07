@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from typing import Tuple, Dict, Optional
 
 from .bidding import ExecutionCostEstimator, EWCForgettingEstimator
+from .prototype_store import PrototypeStore
 
 
 class MoBExpert:
@@ -57,6 +58,9 @@ class MoBExpert:
         # =====================================================================
         self.last_won_global_batch = -1  # Global batch index when expert last won
         # =====================================================================
+
+        # Prototype store for feature-distance routing (lazy init on first forward_features call)
+        self.prototype_store: Optional[PrototypeStore] = None
 
     def compute_bid(self, x: torch.Tensor, y: torch.Tensor) -> Tuple[float, Dict]:
         """
@@ -119,7 +123,23 @@ class MoBExpert:
         x = x.to(self.device)
         y = y.to(self.device)
         optimizer.zero_grad()
-        logits = self.model(x)
+
+        # Use forward_features to get both features (for prototypes) and logits
+        if hasattr(self.model, 'forward_features'):
+            features, logits = self.model.forward_features(x)
+
+            # Lazy-init prototype store on first call
+            if self.prototype_store is None:
+                self.prototype_store = PrototypeStore(
+                    feature_dim=features.shape[1],
+                    device=self.device
+                )
+
+            # Accumulate prototype statistics (detached, no grad impact)
+            self.prototype_store.update(features.detach(), y)
+        else:
+            logits = self.model(x)
+
         task_loss = F.cross_entropy(logits, y)
         ewc_penalty = self.forget_estimator.penalty()
         total_loss = task_loss + ewc_penalty
@@ -154,6 +174,10 @@ class MoBExpert:
         Triggered when a distribution shift is detected.
         """
         self.forget_estimator.update_fisher(dataloader, num_samples=num_samples)
+
+        # Finalize prototype centroids and covariance after Fisher update
+        if self.prototype_store is not None:
+            self.prototype_store.finalize()
 
     def evaluate(self, dataloader: torch.utils.data.DataLoader) -> Dict:
         # This function is used for individual expert eval, not the main metric

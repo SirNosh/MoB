@@ -1,0 +1,52 @@
+{
+  "seed": 42,
+  "experiment_name": "ab_a0.3_b0.7_trainproto",
+  "config": {
+    "num_experts": 4,
+    "num_tasks": 5,
+    "alpha": 0.3,
+    "beta": 0.7,
+    "lambda_ewc": 1000.0,
+    "learning_rate": 0.001,
+    "forgetting_cost_scale": 1.0,
+    "device": "cuda",
+    "batch_size": 32,
+    "epochs_per_task": 4,
+    "use_lwf": false,
+    "lwf_temperature": 2.0,
+    "lwf_alpha": 0.1,
+    "bid_formula": "addition",
+    "reset_optimizer": true,
+    "idle_threshold": 100,
+    "routing_strategy": "prototype",
+    "top_k": 1,
+    "per_sample": true,
+    "temperature": 1.0,
+    "eval_bid_mode": "full",
+    "train_routing": "prototype",
+    "train_routing_warmup": 1000
+  },
+  "task_accuracies": [
+    0.9990543735224586,
+    0.9877571008814887,
+    1.0,
+    0.9617321248741189,
+    0.8209783156833081
+  ],
+  "final_accuracies": [
+    0.0,
+    0.9270322918891907,
+    0.0,
+    0.0,
+    0.8209783434867859
+  ],
+  "avg_accuracy": 0.34960212707519533,
+  "forgetting": 0.7553778268472189,
+  "expert_task_wins": {
+    "0": 2,
+    "1": 0,
+    "2": 1,
+    "3": 0,
+    "4": 0
+  }
+}

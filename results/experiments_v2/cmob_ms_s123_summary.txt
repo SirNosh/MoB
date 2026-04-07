@@ -1,0 +1,2 @@
+Avg Accuracy: 77.4400
+Detected Shifts: [1583, 3094, 4502, 6025]

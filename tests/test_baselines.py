@@ -29,7 +29,7 @@ from scipy import stats
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from mob import (
-    PerBatchVCGAuction,
+    PerBatchAuction,
     ExpertPool,
     SimpleCNN,
     create_model,
@@ -149,7 +149,7 @@ def run_mob_experiment(train_tasks, test_tasks, config):
     }
 
     pool = ExpertPool(config['num_experts'], expert_config, device=device)
-    auction = PerBatchVCGAuction(config['num_experts'])
+    auction = PerBatchAuction(config['num_experts'])
 
     optimizers = [
         torch.optim.Adam(expert.model.parameters(), lr=config['learning_rate'])

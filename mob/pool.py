@@ -73,7 +73,7 @@ class ExpertPool:
         Gathers bids from all experts for a given batch.
         
         Each expert uses its own Z-Score normalization based on running statistics,
-        which preserves VCG independence (each bid depends only on the expert's own history).
+        which preserves bid independence (each bid depends only on the expert's own history).
         """
         bids = np.zeros(self.num_experts)
         components = []
