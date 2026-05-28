@@ -1,0 +1,13 @@
+# MoB Phase-1 FeCAM-Router gate — HPC requirements
+# Target: ACIDSDB (Arctic), python/3.10.14, cuda/12.1, Tesla V100 32GB.
+# Pinned minimums known to work; upper bounds intentionally open so pip
+# resolves the latest compatible wheel for V100.
+
+torch>=2.0,<2.5
+torchvision>=0.15
+timm>=1.0.7            # provides vit_base_patch16_224.augreg_in21k (non-deprecated name)
+numpy>=1.24
+pyyaml>=6.0
+pytest>=7.0
+scipy>=1.10            # for BCa bootstrap in post-gate analysis (not used in run_arm)
+fvcore>=0.1.5          # for §8.4 test 12 FLOP accounting; optional at runtime

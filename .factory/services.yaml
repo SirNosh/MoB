@@ -1,9 +1,0 @@
-commands:
-  test: pytest tests/test_components.py -v
-  typecheck: echo "No typecheck configured (Python without type hints)"
-  lint: echo "No linter configured"
-  run_task_aware: python tests/run_mob_only.py --seed 42
-  run_continual: python tests/run_continual_mob.py --seed 42
-  run_v3_experiments: python tests/run_v3_experiments.py
-
-services: {}

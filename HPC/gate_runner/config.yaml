@@ -1,0 +1,170 @@
+# MoB Phase-1 FeCAM-Router gate — frozen config
+# Protocol: docs/protocols/fecam-router-gate.md v1.2.1
+# Freeze target: 2026-04-26
+#
+# Every field below is pinned by v1.2.1 (§2.1 invariants + §2.3 T1..T7 + §4.6 + §4.7).
+# Changes post-freeze require a §13 amendment. Acceptance test 18 (§8.4)
+# asserts the fecam.* block matches paper-canonical values; test 20 asserts
+# the training.* block matches §2.3 T1..T7; test 8 asserts the SHA-256 of the
+# canonicalized YAML matches the preregistered hash.
+
+protocol:
+  id: MOB-GATE-001
+  version: "1.2.1"
+  freeze_target: "2026-04-26"
+
+# -- Backbone (§2.1 row "Backbone" + v1.2.1 "Backbone freeze scope") --
+model:
+  backbone:
+    name: "vit_base_patch16_224.augreg_in21k"   # timm non-deprecated name
+    source: "timm"
+    feature_dim: 768
+    frozen_param_groups:
+      - blocks
+      - patch_embed
+      - cls_token
+      - norm
+      - pos_embed
+    ln_unfreeze_exception: false               # DSIC safety; §2.3 T7 clarifier
+  expert:
+    # Per-expert adapter = LoRA(r=8) on QKV of all 12 blocks + FFN bottleneck.
+    # Target ~300K trainable params (Chamber R2 §2.2).
+    lora_rank: 8
+    lora_target: "qkv"                         # attention QKV projection
+    lora_alpha: 16
+    ffn_bottleneck_hidden: 128                 # 768 -> 128 -> 768 on CLS
+    trainable_target_params: 300000            # informational; logged per run
+
+# -- Pool (§2.1 "Expert count") --
+# NOTE: protocol v1.2.1 §2.1 pins "Expert count: 4 experts (per S1/S2
+# commitment; memory/MEMORY.md and feedback_4experts.md)". This is
+# load-bearing continual-learning difficulty. Dev's sprint brief says K=8;
+# that is out of protocol. Pinning K=4 here per §2.1; escalation flagged
+# in HPC/README.md and sprint log.
+pool:
+  num_experts: 4
+
+# -- Dataset / task partition (§2.1 "Task partition", §5) --
+# NOTE (v1.2.1 headline alignment, Nosh 2026-04-19 post-Jett-sprint): Pinned to
+# 20T x 5C per protocol §2.1 "Headline config" + §1.4 "A_T on the 20-task
+# split after task 20 completes" + §1.7 (paper metric primacy). The earlier
+# default of 10T x 10C (from Dev's sprint brief) would have invalidated the
+# preregistered §1.4 primary statistic because A_T at 10T != A_T at 20T. The
+# 10T x 10C and 5T x 20C configs remain protocol-registered (§4.2 configs 2
+# and 3) as supplementary runs; override at launch via --config or by
+# editing these two values if/when those supplementary runs are scheduled.
+data:
+  dataset: "cifar100"
+  num_tasks: 20                                # §2.1 Headline config + §1.4 primary metric
+  classes_per_task: 5                          # 20 * 5 = 100
+  class_order_seed: 1993                       # LAMDA-PILOT exps/cifar100_b0_inc10.json
+  class_order_strategy: "lamda_pilot_rng1993"  # np.random.RandomState(1993).shuffle(np.arange(100))
+  image_size: 224
+  resize_interpolation: "bicubic"              # §5.3
+  resize_antialias: true
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std:  [0.229, 0.224, 0.225]
+  augmentation: "none"                         # user-spec: "no augmentation"
+# NOTE: §2.1 "Data augmentation" row calls for LAMDA-PILOT default
+# (random crop + horizontal flip). User sprint brief says no augmentation.
+# Going with user-spec; augmentation is matched across arms either way so
+# does not bias the A-vs-B comparison. Flagged.
+
+# -- Training (§2.3 T1..T7 — v1.2.1 pinned) --
+training:
+  epochs_per_task: 20                          # T1: LAMDA-PILOT fecam.json @ 7a6e904c
+  batch_size: 128                              # T4
+  eval_batch_size: 256
+  num_workers: 4
+  pin_memory: true
+  optimizer:
+    name: "AdamW"
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    weight_decay: 1.0e-4                       # T2, T5
+  schedule:
+    type: "cosine"
+    min_lr: 1.0e-5                             # T3
+    peak_lr:
+      adapter: 5.0e-4
+      lora_qkv: 1.0e-3                         # T3
+    warm_restart_at_task_boundary: false       # T3
+  warmup:
+    type: "linear"
+    steps: 100
+    start_lr: 1.0e-6
+    applied_to_tasks: [0]                      # T6: task-1 (index 0) only
+  optimizer_reset:
+    cadence: "task_end_after_fisher"           # T7
+    scope: "every_expert"                      # T7: all experts, not just winner
+
+# -- FeCAM core (§2.0 + §4.6 + §4.7; tests 17/18/19) --
+fecam:
+  # Paper-canonical two-parameter additive shrinkage:
+  #   Sigma_s = Sigma + alpha1*V1*I + alpha2*V2*(1-I)
+  # Port source: dipamgoswami/FeCAM @ e33f39d1 models/base.py::shrink_cov
+  # NOTE: upstream uses param names alpha1/alpha2 which are the paper's gamma1/gamma2.
+  alpha1: 1.0                                  # paper §7 CIFAR-100 MSCIL; = gamma1
+  alpha2: 1.0                                  # paper §7 CIFAR-100 MSCIL; = gamma2
+  beta: 0.5                                    # Tukey beta; unused if tukey=false
+  tukey: false                                 # §2.0 element 6: OFF for ViT (paper §7)
+  per_class_cov: true                          # paper Table 1 per-class cov
+  full_cov: true                               # full covariance, not diag-only
+  shrink: true                                 # shrinkage enabled
+  norm_cov: true                               # correlation normalization enabled
+  l2_normalize: true                           # features + means L2-normalized
+  inverse_method: "pinv"                       # Moore-Penrose; §2.0 inversion note
+
+# -- Bid / auction (§1.3, §2.2, §4.7, project.md §2.2) --
+# bid_i(x) = alpha * d_M(x, mu_{i,c}; Sigma_{i,c,s})
+#         + beta  * < F_i, (theta_i - theta*_i)^2 >
+#         + gamma * (f_i / f_bar)
+# Arm A: all three terms active.
+# Arm B: beta=gamma=0 hard-coded in auction.compose_bid (§2.2 implementation discipline).
+auction:
+  # alpha: calibrated via shared pre-routing pre-pass per §2.1 row / §8.4 test 15.
+  # Jett runs a backbone-only forward on task-0 train set BEFORE any arm
+  # begins training; alpha = median(d_M) across all (x, i, c). Both arms
+  # load the same scalar.
+  alpha_source: "shared_prepass"
+  alpha: null                                  # filled in by prepass at run start; logged
+  # Arm A beta/gamma (project.md §2.2 defaults; §4.4 Fisher clamp governs magnitude)
+  beta_arm_a: 1.0
+  gamma_arm_a: 0.1                             # synthesis §2.1 default
+  # Arm B: hard-coded zero in code, repeated here for traceability
+  beta_arm_b: 0.0
+  gamma_arm_b: 0.0
+  tie_break: "lowest_index"                    # deterministic winner on ties
+
+# -- EWC / Fisher (§4.4 + project memory) --
+ewc:
+  fisher_decay: 0.9                            # Online EWC (Schwarz 2018)
+  fisher_clamp_min: 0.1                        # memory/MEMORY.md load-bearing
+  lambda_ewc: 1.0                              # scale; beta carries the magnitude
+  fisher_num_samples: 200                      # empirical Fisher on 200 samples/task
+
+# -- Conscience (project.md §2.2; DeSieno EMA win-frequency) --
+conscience:
+  ema_decay: 0.99
+
+# -- Determinism (§4.3) --
+determinism:
+  seed_sources: ["python_random", "numpy", "torch_cpu", "torch_cuda", "cublas"]
+  cudnn_deterministic: true
+  cudnn_benchmark: false
+  cublas_workspace_config: ":4096:8"
+  use_deterministic_algorithms: true
+  use_deterministic_warn_only: true
+
+# -- Eval (§2.1 "Evaluation routing") --
+eval:
+  routing: "pseudo_label_auction"              # pseudo-label, not GT; project.md §9
+  frequency: "end_of_task"
+
+# -- Logging / output --
+logging:
+  level: "INFO"
+  out_dir_default: "results/gate"
+  emit_backbone_hash: true
+  emit_first_bid_hash: true                    # §8.4 test 13 artifact
+  emit_loss_at_t0_hash: true                   # §8.4 test 11 artifact

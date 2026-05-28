@@ -1,0 +1,6 @@
+# Cypher Session Log
+
+## [2026-04-18 audit] CIFAR-100 CL benchmark landscape audit for MoB graduation
+- **artifact**: C:\MoB Final\docs\lit-review\04-cifar100-benchmark-audit.md
+- **outcome**: Mapped six canonical CIFAR-100 CL protocols (Split-10T/20T/5T, B0, B50, GCIL), documented dataset biases (10% ciFAIR test/train near-duplication, CIFAR-100N instance-dependent noise, 32x32->224x224 upsampling artifact, 20-superclass semantic overlap), and assembled a provisional SOTA leaderboard for both pretrained-ViT (L2P/DualPrompt/CODA-Prompt/SLCA/RanPAC/FeCAM/SimpleCIL) and from-scratch-CNN (iCaRL/DER/FOSTER/DER++) eras with arxiv IDs and confidence tags. Flagged FeCAM as architecturally identical to MoB v2 Mahalanobis routing -- reviewers will demand a head-to-head. Produced minimum-credibility checklist and 7 PI-only open questions (task count, backbone philosophy, FeCAM ablation, rehearsal stance, GCIL inclusion, ciFAIR retest, class ordering).
+- **follow_up**: Dev decides task-count mapping (5T x 20C vs 10T x 10C) and backbone (frozen ViT-B/16 vs from-scratch ResNet vs both). Next audit candidate: probe whether MoB v2 Mahalanobis prototype routing on Split-MNIST (87%) is quantitatively distinguishable from a FeCAM baseline at the same compute budget before committing CIFAR-100 engineering.
